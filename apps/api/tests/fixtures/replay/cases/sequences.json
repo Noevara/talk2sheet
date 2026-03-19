@@ -1,0 +1,350 @@
+[
+  {
+    "id": "sequence_ranking_chart_topk_explain",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-ranking-chart",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "Show the top 5 services by amount.",
+        "requested_mode": "auto",
+        "locale": "en",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "Compute",
+        "expected_preview_rows": [
+          ["Compute", 220.0],
+          ["AI", 200.0],
+          ["Storage", 80.0]
+        ]
+      },
+      {
+        "chat_text": "改成图表",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "chart",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "220",
+        "expected_chart_spec": {
+          "type": "bar",
+          "x": "Service Name",
+          "y": "value",
+          "top_k": 5
+        }
+      },
+      {
+        "chat_text": "只看前2个",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "chart",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "220",
+        "expected_chart_spec": {
+          "type": "bar",
+          "x": "Service Name",
+          "y": "value",
+          "top_k": 2
+        }
+      },
+      {
+        "chat_text": "上面排第一个的 Compute 是什么东西啊，能结合表格解释一下吗",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "explain_ranked_item",
+        "expected_result_columns": ["Service Name", "Date", "Amount"],
+        "expected_answer_contains": "3 条相关明细",
+        "expected_preview_rows": [
+          ["Compute", "2025-01-03", 120],
+          ["Compute", "2025-01-06", 60],
+          ["Compute", "2025-02-03", 40]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sequence_ranking_switch_dimension_then_lookup_second",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-switch-dimension",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "Show the top 5 services by amount.",
+        "requested_mode": "auto",
+        "locale": "en",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "Compute",
+        "expected_preview_rows": [
+          ["Compute", 220.0],
+          ["AI", 200.0],
+          ["Storage", 80.0]
+        ]
+      },
+      {
+        "chat_text": "换成按地区看",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "us-west",
+        "expected_preview_rows": [
+          ["us-west", 200.0],
+          ["cn-sh", 180.0],
+          ["cn-bj", 120.0]
+        ]
+      },
+      {
+        "chat_text": "那第二名呢",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranked_item_lookup",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "cn-sh"
+      }
+    ]
+  },
+  {
+    "id": "sequence_ranking_share_then_month_filter",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-share-filter",
+    "local_file": "monthly_region_growth.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "按地区展示费用排行",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "West",
+        "expected_preview_rows": [
+          ["West", 100.0],
+          ["East", 65.0]
+        ]
+      },
+      {
+        "chat_text": "这个改成占比",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "share",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "60.6%"
+      },
+      {
+        "chat_text": "只看 2025-02",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "share",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "63.2%",
+        "expected_preview_rows": [
+          ["West", 60.0],
+          ["East", 35.0]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sequence_share_filter_trend_detail_chain",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-share-trend-detail",
+    "local_file": "monthly_region_growth.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "按地区展示费用排行",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "West",
+        "expected_preview_rows": [
+          ["West", 100.0],
+          ["East", 65.0]
+        ]
+      },
+      {
+        "chat_text": "这个改成占比",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "share",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "60.6%"
+      },
+      {
+        "chat_text": "只看 West 的 2025-02",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "share",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "100.0%"
+      },
+      {
+        "chat_text": "改成趋势",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "trend",
+        "expected_result_columns": ["month_bucket", "value"],
+        "expected_answer_contains": "2025-02"
+      },
+      {
+        "chat_text": "改成明细",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "detail_rows",
+        "expected_result_columns": ["Month", "Amount"],
+        "expected_answer_contains": "1 条明细",
+        "expected_preview_rows": [
+          ["2025-02", 60]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sequence_ranking_lookup_last",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-ranking-last",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "Show the top 5 services by amount.",
+        "requested_mode": "auto",
+        "locale": "en",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "Compute",
+        "expected_preview_rows": [
+          ["Compute", 220.0],
+          ["AI", 200.0],
+          ["Storage", 80.0]
+        ]
+      },
+      {
+        "chat_text": "最后一名呢",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranked_item_lookup",
+        "expected_result_columns": ["Service Name", "value"],
+        "expected_answer_contains": "Storage"
+      }
+    ]
+  },
+  {
+    "id": "sequence_share_filter_compare_previous_month",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-compare-month",
+    "local_file": "monthly_region_growth.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "按地区展示费用排行",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "West"
+      },
+      {
+        "chat_text": "只看 West 的 2025-02",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "West"
+      },
+      {
+        "chat_text": "和上个月对比一下",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "period_compare",
+        "expected_result_columns": ["2025-01", "2025-02", "change_value", "change_pct"],
+        "expected_answer_contains": "50.0%"
+      }
+    ]
+  },
+  {
+    "id": "sequence_ranking_explain_breakdown_by_region",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-breakdown-region",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "按计费项展示费用排行",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Billing Item Name", "value"],
+        "expected_answer_contains": "Token"
+      },
+      {
+        "chat_text": "为什么这个高，按地区拆解一下",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "explain_breakdown",
+        "expected_result_columns": ["Region", "value"],
+        "expected_answer_contains": "us-west"
+      }
+    ]
+  },
+  {
+    "id": "sequence_ranking_explain_explicit_target",
+    "type": "analysis_sequence",
+    "conversation_id": "conv-seq-explicit-target",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "locale": "zh-CN",
+    "turns": [
+      {
+        "chat_text": "按计费项展示费用排行",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "ranking",
+        "expected_result_columns": ["Billing Item Name", "value"],
+        "expected_answer_contains": "Token"
+      },
+      {
+        "chat_text": "为什么 Token 消费这么高呢，能分析一下吗",
+        "requested_mode": "auto",
+        "locale": "zh-CN",
+        "expected_mode": "text",
+        "expected_intent": "explain_ranked_item",
+        "expected_result_columns": ["Billing Item Name", "Date", "Amount"],
+        "expected_answer_contains": "1 条相关明细"
+      }
+    ]
+  }
+]

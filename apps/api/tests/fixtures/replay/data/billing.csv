@@ -1,0 +1,6 @@
+Date,Service Name,Billing Item Name,Region,Transaction ID,Amount
+2025-01-03,Compute,Instance,cn-sh,T-101,120
+2025-01-04,Storage,Disk,cn-bj,T-102,80
+2025-01-06,Compute,Instance,cn-sh,T-103,60
+2025-01-11,AI,Token,us-west,T-104,200
+2025-02-03,Compute,Bandwidth,cn-bj,T-105,40

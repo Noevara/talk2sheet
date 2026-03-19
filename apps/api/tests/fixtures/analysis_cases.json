@@ -1,0 +1,60 @@
+[
+  {
+    "id": "row_count_en",
+    "chat_text": "How many rows are in this sheet?",
+    "requested_mode": "text",
+    "locale": "en",
+    "expected_intent": "row_count",
+    "expected_answer_contains": "4"
+  },
+  {
+    "id": "total_amount_en",
+    "chat_text": "What is the total amount?",
+    "requested_mode": "text",
+    "locale": "en",
+    "expected_intent": "total_amount",
+    "expected_answer_contains": "250"
+  },
+  {
+    "id": "average_amount_en",
+    "chat_text": "What is the average amount?",
+    "requested_mode": "text",
+    "locale": "en",
+    "expected_intent": "average_amount",
+    "expected_answer_contains": "62.5"
+  },
+  {
+    "id": "distinct_category_zh",
+    "chat_text": "Category 有多少个不重复值？",
+    "requested_mode": "text",
+    "locale": "zh-CN",
+    "expected_intent": "count_distinct",
+    "expected_answer_contains": "3"
+  },
+  {
+    "id": "detail_rows_en",
+    "chat_text": "List the top 2 detail rows by amount.",
+    "requested_mode": "text",
+    "locale": "en",
+    "expected_intent": "detail_rows",
+    "expected_preview_rows": 2
+  },
+  {
+    "id": "ranking_chart_en",
+    "chat_text": "Show the top 2 categories by amount as a bar chart.",
+    "requested_mode": "chart",
+    "locale": "en",
+    "expected_intent": "ranking",
+    "expected_chart_type": "bar",
+    "expected_chart_rows": 2
+  },
+  {
+    "id": "trend_chart_zh",
+    "chat_text": "按月展示金额趋势图",
+    "requested_mode": "chart",
+    "locale": "zh-CN",
+    "expected_intent": "trend",
+    "expected_chart_type": "line",
+    "expected_chart_rows": 2
+  }
+]

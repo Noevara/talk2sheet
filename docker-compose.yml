@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      args:
+        PYTHON_IMAGE: ${TALK2SHEET_PYTHON_IMAGE:-python:3.11-slim}
+    environment:
+      TALK2SHEET_API_PORT: ${TALK2SHEET_API_PORT:-8000}
+      TALK2SHEET_DATA_DIR: /app/data
+      TALK2SHEET_ALLOWED_ORIGINS: http://localhost:${TALK2SHEET_WEB_PORT:-8080}
+      TALK2SHEET_MAX_PREVIEW_ROWS: ${TALK2SHEET_MAX_PREVIEW_ROWS:-200}
+      TALK2SHEET_MAX_ANALYSIS_ROWS: ${TALK2SHEET_MAX_ANALYSIS_ROWS:-50000}
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${TALK2SHEET_API_PORT:-8000}:8000"
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NODE_IMAGE: ${TALK2SHEET_NODE_IMAGE:-node:20-alpine}
+        NGINX_IMAGE: ${TALK2SHEET_NGINX_IMAGE:-nginx:1.27-alpine}
+    depends_on:
+      - api
+    ports:
+      - "${TALK2SHEET_WEB_PORT:-8080}:80"

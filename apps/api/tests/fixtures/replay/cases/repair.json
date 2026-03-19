@@ -1,0 +1,58 @@
+[
+  {
+    "id": "repair_selection_service_alias",
+    "type": "selection_repair",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "selection_plan": {
+      "columns": ["Servce Name", "Amount"],
+      "filters": [],
+      "distinct_by": null,
+      "sort": {"col": "Servce Name", "dir": "asc"},
+      "limit": null
+    },
+    "expected_selection_plan": {
+      "columns": ["Service Name", "Amount"],
+      "sort_col": "Service Name"
+    }
+  },
+  {
+    "id": "repair_transform_pivot_and_post_pivot_references",
+    "type": "transform_repair",
+    "local_file": "regional_profit.csv",
+    "sheet_index": 1,
+    "transform_plan": {
+      "derived_columns": [],
+      "groupby": ["Regoin", "Monthh"],
+      "metrics": [
+        {"agg": "sum", "col": "Revenuee", "as_name": "revenue"},
+        {"agg": "sum", "col": "Costs", "as_name": "cost"}
+      ],
+      "formula_metrics": [
+        {"as_name": "profit", "op": "sub", "left": "revenue", "right": "cost"}
+      ],
+      "having": [],
+      "pivot": {
+        "index": ["Regoin"],
+        "columns": "Monthh",
+        "values": "Profitt",
+        "fill_value": 0
+      },
+      "post_pivot_formula_metrics": [
+        {"as_name": "delta", "op": "sub", "left": "2025-02", "right": "2025-01"}
+      ],
+      "post_pivot_having": [],
+      "return_rows": false,
+      "order_by": {"col": "Deltaa", "dir": "desc"},
+      "top_k": null
+    },
+    "expected_transform_plan": {
+      "groupby": ["Region", "Month"],
+      "metric_cols": ["Revenue", "Cost"],
+      "pivot_index": ["Region"],
+      "pivot_columns": "Month",
+      "pivot_values": "profit",
+      "order_by_col": "delta"
+    }
+  }
+]

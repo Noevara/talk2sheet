@@ -1,0 +1,37 @@
+[
+  {
+    "id": "chart_repair_service_amount_axes",
+    "type": "chart_repair",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chart_spec": {
+      "type": "bar",
+      "x": "Servce Name",
+      "y": "Ammount",
+      "title": null,
+      "top_k": null,
+      "agg": null
+    },
+    "expected_chart_spec": {
+      "x": "Service Name",
+      "y": "Amount",
+      "title": "chart repair replay"
+    }
+  },
+  {
+    "id": "chart_clarification_ambiguous_name_axis",
+    "type": "chart_clarification",
+    "local_file": "ambiguous_name.xlsx",
+    "sheet_index": 1,
+    "chart_spec": {
+      "type": "bar",
+      "x": "名称",
+      "y": "Amount",
+      "title": "Ambiguous chart",
+      "top_k": 5,
+      "agg": null
+    },
+    "expected_reason_contains": "名称",
+    "expected_option_labels_include": ["客户名称", "资源名称"]
+  }
+]

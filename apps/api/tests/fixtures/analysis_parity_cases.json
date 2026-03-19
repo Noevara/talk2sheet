@@ -1,0 +1,52 @@
+[
+  {
+    "id": "service_ranking_text_zh",
+    "chat_text": "按服务统计费用最高的前2项",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "ranking",
+    "expected_mode": "text",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "Compute"
+  },
+  {
+    "id": "billing_item_ranking_text_zh",
+    "chat_text": "按计费项统计费用排行",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "ranking",
+    "expected_mode": "text",
+    "expected_result_columns": ["Billing Item Name", "value"],
+    "expected_answer_contains": "Token"
+  },
+  {
+    "id": "region_ranking_chart_zh",
+    "chat_text": "按地域展示费用排行",
+    "requested_mode": "chart",
+    "locale": "zh-CN",
+    "expected_intent": "ranking",
+    "expected_mode": "chart",
+    "expected_result_columns": ["Region", "value"],
+    "expected_chart_type": "bar"
+  },
+  {
+    "id": "weekpart_compare_text_zh",
+    "chat_text": "工作日和周末哪个消费更高",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "weekpart_compare",
+    "expected_mode": "text",
+    "expected_result_columns": ["weekpart", "value"],
+    "expected_answer_contains": "周末"
+  },
+  {
+    "id": "service_share_text_zh",
+    "chat_text": "各服务费用Top3占比是什么",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "share",
+    "expected_mode": "text",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "%"
+  }
+]

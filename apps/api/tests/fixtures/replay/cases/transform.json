@@ -1,0 +1,43 @@
+[
+  {
+    "id": "transform_post_pivot_growth_compare",
+    "type": "transform",
+    "local_file": "monthly_region_growth.csv",
+    "sheet_index": 1,
+    "question": "比较各地区 2025-02 比 2025-01 增长额大于10的地区",
+    "selection_plan": {
+      "columns": ["Region", "Month", "Amount"],
+      "filters": [],
+      "distinct_by": null,
+      "sort": null,
+      "limit": null
+    },
+    "transform_plan": {
+      "derived_columns": [],
+      "groupby": ["Region", "Month"],
+      "metrics": [
+        {"agg": "sum", "col": "Amount", "as_name": "value"}
+      ],
+      "formula_metrics": [],
+      "having": [],
+      "pivot": {
+        "index": ["Region"],
+        "columns": "Month",
+        "values": "value",
+        "fill_value": 0
+      },
+      "post_pivot_formula_metrics": [
+        {"as_name": "growth", "op": "sub", "left": "2025-02", "right": "2025-01"}
+      ],
+      "post_pivot_having": [
+        {"col": "growth", "op": ">", "value": 10}
+      ],
+      "return_rows": false,
+      "order_by": {"col": "growth", "dir": "desc"},
+      "top_k": null
+    },
+    "expected_records": [
+      {"Region": "West", "2025-01": 40.0, "2025-02": 60.0, "growth": 20.0}
+    ]
+  }
+]

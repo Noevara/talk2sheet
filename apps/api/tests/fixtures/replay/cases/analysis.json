@@ -1,0 +1,294 @@
+[
+  {
+    "id": "analysis_followup_total_amount_after_row_count",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "统计总金额",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 1,
+      "last_turn": {
+        "question": "当前工作表有多少行？",
+        "intent": "row_count"
+      }
+    },
+    "expected_intent": "total_amount",
+    "expected_result_columns": ["total_amount"],
+    "expected_answer_contains": "500"
+  },
+  {
+    "id": "analysis_chart_top_services",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "Show the top 2 services by amount as a bar chart.",
+    "requested_mode": "chart",
+    "locale": "en",
+    "expected_mode": "chart",
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "Compute",
+    "expected_chart_spec": {
+      "type": "bar",
+      "x": "Service Name",
+      "y": "value",
+      "top_k": 2
+    }
+  },
+  {
+    "id": "analysis_followup_switch_previous_ranking_to_chart",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "改成图表",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 1,
+      "is_followup": true,
+      "last_mode": "text",
+      "last_pipeline_summary": {
+        "intent": "ranking",
+        "mode": "text",
+        "groupby": ["Service Name"],
+        "metric_aliases": ["value"],
+        "result_columns": ["Service Name", "value"],
+        "result_row_count": 3
+      },
+      "last_turn": {
+        "question": "Show the top 3 services by amount.",
+        "intent": "ranking"
+      }
+    },
+    "expected_mode": "chart",
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "220",
+    "expected_chart_spec": {
+      "type": "bar",
+      "x": "Service Name",
+      "y": "value",
+      "top_k": 3
+    }
+  },
+  {
+    "id": "analysis_followup_switch_previous_trend_to_text",
+    "type": "analysis",
+    "local_file": "monthly_region_growth.csv",
+    "sheet_index": 1,
+    "chat_text": "改成文字说明",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 1,
+      "is_followup": true,
+      "last_mode": "chart",
+      "last_pipeline_summary": {
+        "intent": "trend",
+        "mode": "chart",
+        "groupby": ["month_bucket"],
+        "metric_aliases": ["value"],
+        "chart_type": "line",
+        "result_columns": ["month_bucket", "value"],
+        "result_row_count": 2
+      },
+      "last_turn": {
+        "question": "Show the monthly trend of amount as a line chart.",
+        "intent": "trend"
+      }
+    },
+    "expected_mode": "text",
+    "expected_intent": "trend",
+    "expected_result_columns": ["month_bucket", "value"],
+    "expected_answer_contains": "2025-02",
+    "expected_preview_rows": [
+      ["2025-01", 70.0],
+      ["2025-02", 95.0]
+    ]
+  },
+  {
+    "id": "analysis_date_breakdown_billing_item",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "2025-01-04 这天主要是哪项费用？",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Billing Item Name", "value"],
+    "expected_answer_contains": "Disk"
+  },
+  {
+    "id": "analysis_what_if_reduction_billing_item",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "如果把Instance这一计费项费用降低20%，总金额会降低多少？",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "what_if_reduction",
+    "expected_result_columns": ["matched_amount", "reduction_amount"],
+    "expected_answer_contains": "36"
+  },
+  {
+    "id": "analysis_followup_detail_to_ranking_summary",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "不要返回表格的5行，应该是返回5个消费最高项和对应的费用",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 1,
+      "last_turn": {
+        "question": "最多5次单笔消费是什么",
+        "intent": "detail_rows"
+      }
+    },
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Billing Item Name", "value"],
+    "expected_answer_contains": "Token",
+    "expected_preview_rows": [
+      ["Token", 200.0],
+      ["Instance", 180.0],
+      ["Disk", 80.0],
+      ["Bandwidth", 40.0]
+    ]
+  },
+  {
+    "id": "analysis_followup_shorten_previous_ranking_to_top2",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "只看前2个",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 2,
+      "is_followup": true,
+      "last_mode": "text",
+      "last_pipeline_summary": {
+        "intent": "ranking",
+        "mode": "text",
+        "groupby": ["Service Name"],
+        "metric_aliases": ["value"],
+        "result_columns": ["Service Name", "value"],
+        "result_row_count": 3
+      },
+      "last_turn": {
+        "question": "Show the top 5 services by amount.",
+        "intent": "ranking",
+        "selection_plan": {
+          "columns": ["Service Name", "Amount"],
+          "filters": [],
+          "distinct_by": null,
+          "sort": null,
+          "limit": null
+        },
+        "transform_plan": {
+          "derived_columns": [],
+          "groupby": ["Service Name"],
+          "metrics": [
+            {"agg": "sum", "col": "Amount", "as_name": "value"}
+          ],
+          "formula_metrics": [],
+          "having": [],
+          "pivot": null,
+          "post_pivot_formula_metrics": [],
+          "post_pivot_having": [],
+          "return_rows": false,
+          "order_by": {"col": "value", "dir": "desc"},
+          "top_k": 5
+        }
+      }
+    },
+    "expected_mode": "text",
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "Compute",
+    "expected_preview_rows": [
+      ["Compute", 220.0],
+      ["AI", 200.0]
+    ]
+  },
+  {
+    "id": "analysis_followup_explain_ranked_item",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "上面排第一个的 Token 是什么东西啊，能结合表格解释一下吗",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "followup_context": {
+      "conversation_id": "conv-1",
+      "turn_count": 2,
+      "last_turn": {
+        "question": "不要返回表格的5行，应该是返回5个消费最高项和对应的费用",
+        "intent": "ranking",
+        "selection_plan": {
+          "columns": ["Billing Item Name", "Amount"],
+          "filters": [],
+          "distinct_by": null,
+          "sort": null,
+          "limit": null
+        },
+        "transform_plan": {
+          "derived_columns": [],
+          "groupby": ["Billing Item Name"],
+          "metrics": [
+            {"agg": "sum", "col": "Amount", "as_name": "value"}
+          ],
+          "formula_metrics": [],
+          "having": [],
+          "pivot": null,
+          "post_pivot_formula_metrics": [],
+          "post_pivot_having": [],
+          "return_rows": false,
+          "order_by": {"col": "value", "dir": "desc"},
+          "top_k": 5
+        }
+      }
+    },
+    "expected_intent": "explain_ranked_item",
+    "expected_result_columns": ["Billing Item Name", "Date", "Amount"],
+    "expected_answer_contains": "1 条相关明细",
+    "expected_preview_rows": [
+      ["Token", "2025-01-11", 200]
+    ]
+  },
+  {
+    "id": "analysis_en_top_services",
+    "type": "analysis",
+    "local_file": "billing.csv",
+    "sheet_index": 1,
+    "chat_text": "Show the top 2 services by amount",
+    "requested_mode": "auto",
+    "locale": "en",
+    "expected_intent": "ranking",
+    "expected_result_columns": ["Service Name", "value"],
+    "expected_answer_contains": "Compute",
+    "expected_preview_rows": [
+      ["Compute", 220.0],
+      ["AI", 200.0]
+    ]
+  },
+  {
+    "id": "analysis_text_numeric_total_amount",
+    "type": "analysis",
+    "local_file": "text_numeric_amounts.csv",
+    "sheet_index": 1,
+    "chat_text": "统计总金额",
+    "requested_mode": "auto",
+    "locale": "zh-CN",
+    "expected_intent": "total_amount",
+    "expected_result_columns": ["total_amount"],
+    "expected_answer_contains": "25,900"
+  }
+]

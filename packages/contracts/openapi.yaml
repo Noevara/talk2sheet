@@ -1,0 +1,24 @@
+openapi: 3.1.0
+info:
+  title: Talk2Sheet API
+  version: 0.1.0
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /api/files/upload:
+    post:
+      summary: Upload a spreadsheet file
+  /api/files/{file_id}/sheets:
+    get:
+      summary: List workbook sheets
+  /api/files/{file_id}/preview:
+    get:
+      summary: Preview the active sheet
+  /api/spreadsheet/chat/stream:
+    post:
+      summary: SSE spreadsheet conversation endpoint
+

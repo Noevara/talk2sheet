@@ -1,0 +1,17 @@
+[
+  {
+    "id": "clarification_ambiguous_name",
+    "type": "selection_clarification",
+    "local_file": "ambiguous_name.xlsx",
+    "sheet_index": 1,
+    "selection_plan": {
+      "columns": ["名称"],
+      "filters": [],
+      "distinct_by": null,
+      "sort": null,
+      "limit": null
+    },
+    "expected_reason_contains": "名称",
+    "expected_option_labels_include": ["客户名称", "资源名称"]
+  }
+]
