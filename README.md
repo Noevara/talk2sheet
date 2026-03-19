@@ -2,13 +2,13 @@
 
 Talk2Sheet is an open-source full-stack framework for conversational analytics on Excel and CSV files.
 
-It lets users ask natural-language questions about spreadsheet data, routes the request to the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
+It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
 ## v0.1.0 Scope
 
 Current release focus:
 
-- workbook-aware single-sheet routing
+- workbook-aware analysis on one sheet at a time
 - natural-language spreadsheet analysis
 - multi-turn conversation with clarification and follow-up context
 - visible execution scope, routing summary, result tables, and charts
@@ -17,14 +17,14 @@ Current release focus:
 Supported now:
 
 - file upload, sheet list, and preview
-- workbook-aware routing to one sheet
+- workbook-aware routing to one target sheet
 - row count, totals, averages, distinct count
 - Top N / ranking
 - detail rows
 - trend analysis and basic charts
 - lightweight time-series forecasting
 - `auto / text / chart` response mode
-- structured planner, validator, repair, exact execution, and answer generation pipeline
+- user-visible analysis pipeline, sheet-routing summary, and structured answer output
 
 Not supported yet:
 
@@ -50,6 +50,14 @@ packages/contracts/  generated OpenAPI artifacts
 - Japanese: [README.ja.md](./README.ja.md)
 - Architecture overview: [docs/architecture.en.md](./docs/architecture.en.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
+
+## How It Works
+
+1. upload an Excel or CSV file
+2. preview workbook sheets and select a sheet when needed
+3. ask a natural-language question
+4. let the system clarify the target sheet or intent when the question is ambiguous
+5. review the answer together with routing, scope, tables, and charts
 
 ## Local Development
 
@@ -90,6 +98,8 @@ After startup:
 - Web: `http://localhost:8080`
 - API: `http://localhost:8000`
 
+Note: the current Docker setup does not inject an LLM API key by default. If you want LLM-backed planning or answer generation in containers, add your local environment configuration explicitly.
+
 If Docker Hub access is unreliable in your region, override base images in `.env`:
 
 ```bash
@@ -98,23 +108,23 @@ TALK2SHEET_NODE_IMAGE=docker.m.daocloud.io/node:20-alpine
 TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 ```
 
-## Engineering Notes
+## Implementation Notes
 
-The backend pipeline currently includes:
+The backend request flow currently includes:
 
 1. workbook context loading
 2. single-sheet routing
 3. capability guard
-4. planner and semantic intent understanding
+4. planner and intent understanding
 5. validation and repair
 6. exact or standard execution
 7. structured answer generation
 8. SSE streaming of `meta`, `pipeline`, `answer`, and end-of-stream markers
 
-The frontend currently includes:
+The frontend currently provides:
 
-- workbook feature state
-- conversation feature state
+- workbook-oriented state management
+- conversation-oriented state management
 - clarification interaction
 - categorized example prompts
 - execution pipeline visibility

@@ -20,44 +20,35 @@ This is not positioned as a general BI or advanced statistics platform yet. The 
 ### 2.1 Product capabilities
 
 - file upload, sheet listing, and preview
+- file storage abstracted behind `services/storage/`
 - workbook-aware single-sheet routing
   - explicit sheet reference in the question
   - auto routing from sheet name / column name signals
   - sheet clarification when candidates are ambiguous
   - manual sheet override through `sheet_override`
+  - support for resolving one target sheet inside a workbook and completing the analysis on that sheet
+  - no combined cross-sheet execution yet
 - natural-language analysis
   - row count, total, average, distinct count
   - Top N / ranking
   - detail rows
   - trend analysis and basic charts
   - lightweight time-series forecast
+  - semantic intent understanding instead of relying only on a loose string intent
 - multi-turn conversation
   - recent pipeline summaries stored in memory
   - reuse of semantic and sheet context
   - clarification loop
 - frontend execution visibility
-  - execution disclosure
+  - execution pipeline visibility
   - sheet routing summary
   - result tables / detail tables / simple charts
   - structured answer segments
-
-### 2.2 Recently completed refactor milestones
-
-The following roadmap items have already been merged into the running system:
-
-- `P0`
-  - clarification loop in the frontend
   - `mode = auto / text / chart`
-  - initial `App.vue` split
   - OpenAPI-driven contract sync
   - baseline observability
-- `P1`
-  - file storage abstraction in `services/storage/`
-  - feature-oriented frontend structure
-  - layered CI validation
-- `P2`
-  - semantic intent layer
-  - `P2-2A`: workbook-aware single-sheet routing rather than cross-sheet execution
+- the frontend has been split into feature-oriented modules
+- CI already includes layered validation
 
 ## 3. End-to-End Request Flow
 
@@ -95,7 +86,7 @@ The main runtime path for one request is:
 
 ## 4. Backend Architecture
 
-The backend lives under `apps/api/app/` and currently uses a responsibility-oriented package layout rather than a large DDD rewrite.
+The backend lives under `apps/api/app/` and uses a responsibility-oriented package layout that can keep evolving without a large rewrite.
 
 ### 4.1 API and infrastructure
 
@@ -119,7 +110,7 @@ The backend lives under `apps/api/app/` and currently uses a responsibility-orie
 - `object_storage_file_store.py`
   placeholder for object storage integration
 
-This is the result of the `P1-1` storage refactor. File persistence is no longer hard-wired into spreadsheet business code.
+This layer separates file persistence from spreadsheet analysis logic, which makes future object storage or alternative persistence backends easier to add.
 
 ### 4.3 Spreadsheet pipeline layer
 
@@ -153,7 +144,7 @@ Current routing priority is roughly:
 ### 4.5 Planning and semantic layer
 
 - `apps/api/app/services/spreadsheet/planning/`
-  planner providers, heuristic rules, LLM planner, follow-up planning, guardrails
+  planner providers, heuristic rules, LLM planner, follow-up planning, and guardrails
 - `intent_models.py`
   structured `AnalysisIntent`
 - `intent_understanding.py`
@@ -161,7 +152,7 @@ Current routing priority is roughly:
 - `intent_accessors.py`
   shared semantic-intent access across planner, answer, and memory layers
 
-This is the core of `P2-1`. The system no longer relies only on a loose `intent` string. It preserves richer structure such as:
+The key improvement here is that the system no longer relies only on a loose `intent` string. It preserves richer structure such as:
 
 - `target_metric`
 - `target_dimension`
@@ -300,7 +291,7 @@ The system already includes request-level baseline observability:
 - workbook-aware single-sheet auto routing
 - sheet clarification and manual override
 - follow-up context inheritance
-- semantic intent
+- semantic intent understanding
 - detail rows / summary table / chart / lightweight forecast
 - user-visible execution pipeline and scope disclosure
 
@@ -315,9 +306,9 @@ The system already includes request-level baseline observability:
 
 ## 8. Next Architectural Directions
 
-The next phase should continue from the current design instead of replacing it:
+The next steps should extend the current design rather than replace it:
 
-1. extend from single-sheet routing toward `P2-2B` style multi-sheet planning, without jumping straight into unrestricted joins
+1. build better workbook-level handling for questions that refer to multiple sheets, including detection, clarification, and problem decomposition, before introducing unrestricted joins
 2. extract session store and dataframe cache into replaceable adapters backed by Redis or a database
 3. split planner / repair / capability governance into clearer policy surfaces
 4. evolve the frontend pipeline view from debug-adjacent metadata into a more productized explanation layer

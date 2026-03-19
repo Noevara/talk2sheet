@@ -2,13 +2,13 @@
 
 Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行うためのオープンソースのフルスタックフレームワークです。
 
-ユーザーの質問をもとに、ワークブック内で適切な単一シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
+ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
 ## v0.1.0 の対象範囲
 
 現在のリリースは次に集中しています。
 
-- ワークブック内単一シートのスマートルーティング
+- ワークブック内で一度に 1 つのシートを対象にする分析
 - 自然言語によるスプレッドシート分析
 - clarification と follow-up 文脈を持つ複数ターン対話
 - 実行範囲、routing、結果テーブル、チャートの可視化
@@ -17,14 +17,14 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 現在対応しているもの：
 
 - ファイルアップロード、sheet 一覧、プレビュー
-- ワークブック内単一シートの auto routing
+- ワークブック内で 1 つの対象シートを選ぶ auto routing
 - 行数、合計、平均、重複除去件数
 - Top N / ranking
 - detail rows
 - trend 分析と basic chart
 - 軽量な時系列 forecast
 - `auto / text / chart` mode 切替
-- 構造化された planner / validator / repair / exact execution / answer generation パイプライン
+- ユーザーが確認できる分析パイプライン、sheet routing 要約、構造化回答
 
 現在まだ対応していないもの：
 
@@ -50,6 +50,14 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 - 日本語: このファイル
 - アーキテクチャ: [docs/architecture.ja.md](./docs/architecture.ja.md)
 - 変更履歴: [CHANGELOG.md](./CHANGELOG.md)
+
+## 使い方
+
+1. Excel または CSV ファイルをアップロードする
+2. workbook 内の sheet をプレビューし、必要に応じて対象 sheet を選ぶ
+3. 自然言語で質問する
+4. 質問が曖昧な場合は、sheet や意図の clarification を行う
+5. routing、実行範囲、表、チャートとあわせて結果を確認する
 
 ## ローカル開発
 
@@ -90,6 +98,8 @@ docker compose up --build
 - Web: `http://localhost:8080`
 - API: `http://localhost:8000`
 
+注意: 現在の Docker 構成では、LLM API Key はデフォルトでは注入されません。コンテナ内で LLM ベースの計画や回答生成を有効にしたい場合は、ローカル環境設定を明示的に追加してください。
+
 Docker Hub への接続が不安定な環境では、`.env` でベースイメージを上書きできます。
 
 ```bash
@@ -98,14 +108,14 @@ TALK2SHEET_NODE_IMAGE=docker.m.daocloud.io/node:20-alpine
 TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 ```
 
-## エンジニアリング概要
+## 実装概要
 
 現在のバックエンド主要フロー：
 
 1. workbook context 構築
 2. 単一シート routing
 3. capability guard
-4. planner と semantic intent 理解
+4. planner と意図理解
 5. validation と repair
 6. exact または通常実行
 7. 構造化 answer generation
@@ -113,8 +123,8 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 
 現在のフロントエンドが備えるもの：
 
-- workbook feature state
-- conversation feature state
+- workbook 関連の状態管理
+- conversation 関連の状態管理
 - clarification interaction loop
 - カテゴリ分けされた example prompt
 - execution pipeline visibility

@@ -20,44 +20,35 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 ### 2.1 プロダクト機能
 
 - ファイルアップロード、シート一覧、プレビュー
+- ファイル保存は `services/storage/` を通す構成に分離済み
 - ワークブック内単一シートルーティング
   - 質問内の明示的な sheet 指定
   - sheet 名 / 列名に基づく auto routing
   - 候補が競合した場合の sheet clarification
   - `sheet_override` による手動切替の優先
+  - 同一 workbook 内で対象シートを特定し、そのシート上で分析を完結できる
+  - 複数シートをまたぐ統合実行にはまだ対応していない
 - 自然言語分析
   - 行数、合計、平均、重複除去件数
   - Top N / ranking
   - detail rows
   - trend 分析と basic chart
   - 軽量な時系列 forecast
+  - 緩い文字列 intent だけに依存せず、semantic intent を解釈できる
 - 複数ターン対話
   - 直近ターンの pipeline summary を保持
   - semantic な文脈とシート文脈の継承
   - clarification ループ
 - フロントエンド上の実行可視化
-  - execution disclosure
+  - 実行パイプラインの可視化
   - sheet routing summary
   - result table / detail table / simple chart
   - structured answer segments
-
-### 2.2 直近で完了したリファクタ項目
-
-一時ロードマップにあった以下の項目は、すでに現行実装へ統合されています。
-
-- `P0`
-  - clarification のフロント閉ループ
   - `mode = auto / text / chart`
-  - `App.vue` の初期分割
   - OpenAPI 連携による契約同期
   - 基礎 observability
-- `P1`
-  - `services/storage/` へのファイル保存抽象化
-  - feature 単位のフロント構成
-  - layered CI validation
-- `P2`
-  - semantic intent layer
-  - `P2-2A`: cross-sheet 実行ではなく、ワークブック内単一シート routing を実装
+- フロントエンドは機能単位で分けた構成へ整理済み
+- CI には段階的な検証が入っている
 
 ## 3. エンドツーエンドの処理フロー
 
@@ -95,7 +86,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 ## 4. バックエンド構成
 
-バックエンド本体は `apps/api/app/` 配下にあります。現時点では大規模な DDD への全面移行ではなく、責務ごとのパッケージ分割を採用しています。
+バックエンド本体は `apps/api/app/` 配下にあります。現時点では、責務ごとに分けたパッケージ構成で、全面的な再設計なしに継続改善しやすい形を取っています。
 
 ### 4.1 API と基盤
 
@@ -119,7 +110,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - `object_storage_file_store.py`
   オブジェクトストレージ向けの拡張ポイント
 
-これは `P1-1` の成果であり、ファイル永続化を spreadsheet 業務コードから切り離しています。
+この層によって、ファイル保存の責務を spreadsheet 分析ロジックから切り離し、将来の object storage や別の永続化方式を追加しやすくしています。
 
 ### 4.3 Spreadsheet pipeline 層
 
@@ -161,7 +152,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - `intent_accessors.py`
   planner / answer / memory で共通利用する accessor
 
-これは `P2-1` の中心であり、単なる緩い `intent` 文字列ではなく、次のような構造を保持します。
+この層の重要な点は、単なる緩い `intent` 文字列ではなく、次のような構造を保持することです。
 
 - `target_metric`
 - `target_dimension`
@@ -300,7 +291,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - workbook-aware な単一シート auto routing
 - sheet clarification と manual override
 - follow-up context 継承
-- semantic intent
+- semantic intent の理解
 - detail rows / summary table / chart / lightweight forecast
 - ユーザーから見える execution pipeline と scope disclosure
 
@@ -315,9 +306,9 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 ## 8. 今後のアーキテクチャ方向
 
-次段階では、現在の設計を活かしながら次を進めるのが妥当です。
+次のステップでは、現在の設計を置き換えるのではなく、その上に能力を積み上げるのが妥当です。
 
-1. 単一シート routing の上に `P2-2B` 相当の multi-sheet planning を積み上げ、いきなり unrestricted join へ飛ばない
+1. 単一シート routing を前提に、複数シートにまたがる質問の検出、clarification、問題分解を強化し、安定した関係モデルがない段階で unrestricted join を直接開放しない
 2. session store と dataframe cache を Redis や DB backed な差し替え可能アダプタへ拡張する
 3. planner / repair / capability governance をより明確な policy surface に分割する
 4. フロントの pipeline 表示を debug 情報寄りのものから、よりプロダクト化された説明 UI へ進化させる
