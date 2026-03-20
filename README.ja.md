@@ -12,7 +12,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - 自然言語によるスプレッドシート分析
 - clarification と follow-up 文脈を持つ複数ターン対話
 - 実行範囲、routing、結果テーブル、チャートの可視化
-- 回答コピー、CSV エクスポート、リロード後のローカルセッション復元
+- 回答コピー、CSV/PNG エクスポート、リロード後のローカルセッション復元
 - 英語 / 中国語 / 日本語のドキュメントと UI
 
 現在対応しているもの：
@@ -26,6 +26,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - 軽量な時系列 forecast
 - `auto / text / chart` mode 切替
 - ユーザーが確認できる分析パイプライン、sheet routing 要約、構造化回答
+- シート/列の clarification カードを分けて表示し、選択後は自然な確認文で同じ質問を継続
 
 現在まだ対応していないもの：
 
@@ -57,7 +58,7 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 1. Excel または CSV ファイルをアップロードする
 2. workbook 内の sheet をプレビューし、必要に応じて対象 sheet を選ぶ
 3. 自然言語で質問する
-4. 質問が曖昧な場合は、sheet や意図の clarification を行う
+4. 質問が曖昧な場合は、sheet または列の clarification を行う
 5. routing、実行範囲、表、チャートとあわせて結果を確認する
 
 ## ローカル開発

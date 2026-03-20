@@ -12,7 +12,7 @@ Current release focus:
 - natural-language spreadsheet analysis
 - multi-turn conversation with clarification and follow-up context
 - visible execution scope, routing summary, result tables, and charts
-- answer copy, CSV export, and local session restore after refresh
+- answer copy, CSV/PNG export, and local session restore after refresh
 - multilingual UI and documentation
 
 Supported now:
@@ -26,6 +26,7 @@ Supported now:
 - lightweight time-series forecasting
 - `auto / text / chart` response mode
 - user-visible analysis pipeline, sheet-routing summary, and structured answer output
+- clarification cards for both sheet and column resolution, with natural confirmation follow-up
 
 Not supported yet:
 
@@ -57,7 +58,7 @@ packages/contracts/  generated OpenAPI artifacts
 1. upload an Excel or CSV file
 2. preview workbook sheets and select a sheet when needed
 3. ask a natural-language question
-4. let the system clarify the target sheet or intent when the question is ambiguous
+4. let the system clarify the target sheet or column when the question is ambiguous
 5. review the answer together with routing, scope, tables, and charts
 
 ## Local Development

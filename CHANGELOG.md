@@ -8,7 +8,9 @@ Usability, observability, and release-hardening update for the first public vers
 
 - Result answer cards now support one-click copy
 - Result tables now support CSV export
+- Result charts now support PNG export
 - Frontend restores the latest local workbook, sheet, mode, and conversation state after refresh
+- Clarification cards now distinguish column vs sheet confirmation more clearly, and selected options continue with natural confirmation text
 - Upload, preview, and conversation errors now show clearer user-facing guidance, including `request_id` when available
 - Frontend requests now inject `X-Request-ID`, and backend HTTP / file / SSE routes now emit more complete request-level structured logs
 - Docker and `.env.example` now forward LLM-related settings more explicitly for local container startup
