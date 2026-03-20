@@ -1,21 +1,36 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import type { ClarificationPayload } from "../types";
 
 const props = defineProps<{
   clarification: ClarificationPayload;
   title: string;
   applyLabel: string;
+  reasonPrefix: string;
 }>();
 
 const emit = defineEmits<{
   select: [value: string];
 }>();
+
+const clarificationKind = computed<"sheet" | "column">(() => {
+  return props.clarification.kind === "sheet_resolution" ? "sheet" : "column";
+});
+
+const reasonText = computed(() => {
+  const reason = props.clarification.reason.trim();
+  if (!reason) {
+    return props.reasonPrefix.trim();
+  }
+  return `${props.reasonPrefix}${reason}`;
+});
 </script>
 
 <template>
-  <div class="clarification-card">
+  <div class="clarification-card" :class="`clarification-card-${clarificationKind}`">
     <div class="clarification-title">{{ title }}</div>
-    <p class="clarification-reason">{{ props.clarification.reason }}</p>
+    <p class="clarification-reason">{{ reasonText }}</p>
 
     <div class="clarification-options">
       <button
@@ -38,8 +53,16 @@ const emit = defineEmits<{
   margin-top: 1rem;
   padding: 0.92rem 0.95rem;
   border-radius: 18px;
+}
+
+.clarification-card-column {
   border: 1px solid rgba(29, 95, 133, 0.14);
   background: linear-gradient(180deg, rgba(29, 95, 133, 0.08), rgba(255, 255, 255, 0.88));
+}
+
+.clarification-card-sheet {
+  border: 1px solid rgba(200, 92, 60, 0.2);
+  background: linear-gradient(180deg, rgba(200, 92, 60, 0.1), rgba(255, 255, 255, 0.9));
 }
 
 .clarification-title {
@@ -92,5 +115,9 @@ const emit = defineEmits<{
   transform: translateY(-1px);
   border-color: rgba(29, 95, 133, 0.28);
   background: rgba(255, 255, 255, 0.98);
+}
+
+.clarification-card-sheet .clarification-option:hover {
+  border-color: rgba(200, 92, 60, 0.3);
 }
 </style>

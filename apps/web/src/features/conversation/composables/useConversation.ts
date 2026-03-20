@@ -20,6 +20,13 @@ function createMessageId(): string {
 }
 
 function buildClarificationDisplayText(ui: UiMessages, selectedValue: string): string {
+  const template = ui.clarificationSelectedMessageTemplate.trim();
+  if (template.includes("{value}")) {
+    return template.replace("{value}", selectedValue);
+  }
+  if (template) {
+    return `${template} ${selectedValue}`;
+  }
   return `${ui.clarificationSelectedLabel}: ${selectedValue}`;
 }
 

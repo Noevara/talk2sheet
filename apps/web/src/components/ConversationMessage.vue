@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
 
-import { copyText, downloadCsv } from "../lib/browserExport";
+import { copyText, downloadChartPng, downloadCsv } from "../lib/browserExport";
 import type { UiMessages } from "../i18n/messages";
 import type { AnswerSegments, ChatMessage } from "../types";
 import ClarificationOptions from "./ClarificationOptions.vue";
@@ -20,11 +20,17 @@ const emit = defineEmits<{
 
 const copyState = ref<"idle" | "done">("idle");
 let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+const chartExportState = ref<"idle" | "done">("idle");
+let chartExportFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 onBeforeUnmount(() => {
   if (copyFeedbackTimer) {
     clearTimeout(copyFeedbackTimer);
     copyFeedbackTimer = null;
+  }
+  if (chartExportFeedbackTimer) {
+    clearTimeout(chartExportFeedbackTimer);
+    chartExportFeedbackTimer = null;
   }
 });
 
@@ -228,6 +234,19 @@ const exportCsvFilename = computed(() => {
     : `talk2sheet-${tableType}.csv`;
 });
 
+const canExportChart = computed(() => {
+  return Boolean(props.message.chartSpec && (props.message.chartData?.length ?? 0) > 0);
+});
+
+const chartExportFilename = computed(() => {
+  const routing = asRecord(props.message.pipeline?.sheet_routing);
+  const resolvedSheetIndex = readNumber(routing?.resolved_sheet_index);
+  const chartType = props.message.chartSpec?.type || "chart";
+  return resolvedSheetIndex
+    ? `talk2sheet-sheet-${resolvedSheetIndex}-${chartType}.png`
+    : `talk2sheet-${chartType}.png`;
+});
+
 const answerSegments = computed<AnswerSegments | null>(() => {
   if (props.message.answerSegments) {
     return props.message.answerSegments;
@@ -283,6 +302,13 @@ const fallbackAnalysisText = computed(() => {
 
 const clarification = computed(() => {
   return props.message.clarification || null;
+});
+
+const clarificationTitle = computed(() => {
+  if (clarification.value?.kind === "sheet_resolution") {
+    return props.ui.clarificationSheetLabel;
+  }
+  return props.ui.clarificationColumnLabel;
 });
 
 const sheetRoutingMeta = computed(() => {
@@ -368,6 +394,25 @@ async function handleCopyAnswer(): Promise<void> {
 
 function handleExportCsv(): void {
   downloadCsv(exportCsvFilename.value, detailColumns.value, detailRows.value);
+}
+
+async function handleExportChart(): Promise<void> {
+  if (!props.message.chartSpec || !canExportChart.value) {
+    return;
+  }
+  try {
+    await downloadChartPng(chartExportFilename.value, props.message.chartSpec, props.message.chartData || []);
+    chartExportState.value = "done";
+    if (chartExportFeedbackTimer) {
+      clearTimeout(chartExportFeedbackTimer);
+    }
+    chartExportFeedbackTimer = globalThis.setTimeout(() => {
+      chartExportState.value = "idle";
+      chartExportFeedbackTimer = null;
+    }, 1800);
+  } catch {
+    chartExportState.value = "idle";
+  }
 }
 </script>
 
@@ -480,8 +525,9 @@ function handleExportCsv(): void {
     <ClarificationOptions
       v-if="clarification"
       :clarification="clarification"
-      :title="ui.clarificationLabel"
+      :title="clarificationTitle"
       :apply-label="ui.clarificationApplyLabel"
+      :reason-prefix="ui.clarificationReasonPrefix"
       @select="emit('clarificationSelect', $event)"
     />
 
@@ -496,7 +542,17 @@ function handleExportCsv(): void {
     </details>
 
     <div v-if="message.chartSpec" class="message-chart">
-      <div class="section-label">{{ ui.chartLabel }}</div>
+      <div class="section-head">
+        <div class="section-label">{{ ui.chartLabel }}</div>
+        <button
+          v-if="canExportChart"
+          type="button"
+          class="message-action message-action-secondary message-action-chart"
+          @click="handleExportChart"
+        >
+          {{ chartExportState === "done" ? ui.exportChartDoneLabel : ui.exportChartLabel }}
+        </button>
+      </div>
       <SimpleChart
         :spec="message.chartSpec"
         :data="message.chartData || []"
@@ -507,7 +563,7 @@ function handleExportCsv(): void {
     <div v-if="detailRows.length" class="message-detail-table">
       <div class="section-head">
         <div class="section-label">{{ detailTableLabel }}</div>
-        <button type="button" class="message-action message-action-secondary" @click="handleExportCsv">
+        <button type="button" class="message-action message-action-secondary message-action-csv" @click="handleExportCsv">
           {{ ui.exportCsvLabel }}
         </button>
       </div>

@@ -67,7 +67,11 @@ export interface UiMessages {
   evidenceLabel: string;
   riskNoteLabel: string;
   clarificationLabel: string;
+  clarificationColumnLabel: string;
+  clarificationSheetLabel: string;
   clarificationApplyLabel: string;
+  clarificationReasonPrefix: string;
+  clarificationSelectedMessageTemplate: string;
   pipelineLabel: string;
   selectionPlanLabel: string;
   transformPlanLabel: string;
@@ -94,6 +98,8 @@ export interface UiMessages {
   copyAnswerLabel: string;
   copyAnswerDoneLabel: string;
   exportCsvLabel: string;
+  exportChartLabel: string;
+  exportChartDoneLabel: string;
   userLabel: string;
   assistantLabel: string;
   streamingLabel: string;
@@ -178,7 +184,11 @@ export const messages: Record<Locale, UiMessages> = {
     evidenceLabel: "Evidence",
     riskNoteLabel: "Risk note",
     clarificationLabel: "Clarification",
+    clarificationColumnLabel: "Confirm column",
+    clarificationSheetLabel: "Confirm sheet",
     clarificationApplyLabel: "Use this field",
+    clarificationReasonPrefix: "To keep the result accurate, please confirm this first: ",
+    clarificationSelectedMessageTemplate: "Got it, use \"{value}\" and continue the same question.",
     pipelineLabel: "Execution pipeline",
     selectionPlanLabel: "Selection plan",
     transformPlanLabel: "Transform plan",
@@ -205,6 +215,8 @@ export const messages: Record<Locale, UiMessages> = {
     copyAnswerLabel: "Copy answer",
     copyAnswerDoneLabel: "Copied",
     exportCsvLabel: "Export CSV",
+    exportChartLabel: "Export PNG",
+    exportChartDoneLabel: "Exported",
     userLabel: "User",
     assistantLabel: "Assistant",
     streamingLabel: "streaming",
@@ -316,7 +328,11 @@ export const messages: Record<Locale, UiMessages> = {
     evidenceLabel: "依据",
     riskNoteLabel: "风险提示",
     clarificationLabel: "需要确认",
+    clarificationColumnLabel: "确认字段",
+    clarificationSheetLabel: "确认工作表",
     clarificationApplyLabel: "使用这个字段",
+    clarificationReasonPrefix: "为保证结果准确，请先确认：",
+    clarificationSelectedMessageTemplate: "已确认使用「{value}」，继续按原问题分析。",
     pipelineLabel: "执行链路",
     selectionPlanLabel: "选择计划",
     transformPlanLabel: "转换计划",
@@ -343,6 +359,8 @@ export const messages: Record<Locale, UiMessages> = {
     copyAnswerLabel: "复制回答",
     copyAnswerDoneLabel: "已复制",
     exportCsvLabel: "导出 CSV",
+    exportChartLabel: "导出 PNG",
+    exportChartDoneLabel: "已导出",
     userLabel: "用户",
     assistantLabel: "助手",
     streamingLabel: "流式返回中",
@@ -454,7 +472,11 @@ export const messages: Record<Locale, UiMessages> = {
     evidenceLabel: "根拠",
     riskNoteLabel: "注意点",
     clarificationLabel: "確認が必要です",
+    clarificationColumnLabel: "列を確認",
+    clarificationSheetLabel: "シートを確認",
     clarificationApplyLabel: "この列を使う",
+    clarificationReasonPrefix: "結果の精度を保つため、先に確認してください: ",
+    clarificationSelectedMessageTemplate: "「{value}」を使って、同じ質問を続けます。",
     pipelineLabel: "実行パイプライン",
     selectionPlanLabel: "選択プラン",
     transformPlanLabel: "変換プラン",
@@ -481,6 +503,8 @@ export const messages: Record<Locale, UiMessages> = {
     copyAnswerLabel: "回答をコピー",
     copyAnswerDoneLabel: "コピー済み",
     exportCsvLabel: "CSV を書き出す",
+    exportChartLabel: "PNG を書き出す",
+    exportChartDoneLabel: "書き出し済み",
     userLabel: "ユーザー",
     assistantLabel: "アシスタント",
     streamingLabel: "ストリーミング中",

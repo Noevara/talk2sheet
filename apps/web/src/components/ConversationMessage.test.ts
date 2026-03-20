@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ConversationMessage from "./ConversationMessage.vue";
 import type { ChatMessage } from "../types";
 import { messages } from "../i18n/messages";
-import { copyText, downloadCsv } from "../lib/browserExport";
+import { copyText, downloadChartPng, downloadCsv } from "../lib/browserExport";
 
 vi.mock("../lib/browserExport", () => ({
   copyText: vi.fn(() => Promise.resolve()),
   downloadCsv: vi.fn(),
+  downloadChartPng: vi.fn(() => Promise.resolve()),
 }));
 
 const ui = messages.en;
@@ -103,6 +104,32 @@ describe("ConversationMessage", () => {
     expect(wrapper.emitted("clarificationSelect")).toEqual([["Region"]]);
   });
 
+  it("renders sheet clarification title and friendly reason prefix", () => {
+    const message: ChatMessage = {
+      id: "assistant-clarification-sheet",
+      role: "assistant",
+      text: "Need clarification",
+      clarification: {
+        kind: "sheet_resolution",
+        reason: "I found multiple candidate sheets.",
+        options: [
+          { label: "Sales", value: "Sales" },
+          { label: "Users", value: "Users" },
+        ],
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Confirm sheet");
+    expect(wrapper.text()).toContain("To keep the result accurate, please confirm this first:");
+  });
+
   it("renders sheet routing summary when another sheet is resolved", () => {
     const message: ChatMessage = {
       id: "assistant-3",
@@ -160,13 +187,48 @@ describe("ConversationMessage", () => {
       },
     });
 
-    const exportButton = wrapper.find("button.message-action-secondary");
+    const exportButton = wrapper.find("button.message-action-csv");
     await exportButton.trigger("click");
 
     expect(downloadCsv).toHaveBeenCalledWith("talk2sheet-sheet-2-result.csv", ["Category", "Amount"], [
       ["Service A", 180],
       ["Service B", 120],
     ]);
+  });
+
+  it("exports chart output as png when chart data exists", async () => {
+    const message: ChatMessage = {
+      id: "assistant-chart-export",
+      role: "assistant",
+      text: "Here is a trend chart.",
+      clarification: null,
+      chartSpec: {
+        type: "line",
+        x: "month",
+        y: "amount",
+      },
+      chartData: [
+        { month: "2026-01", amount: 1200 },
+        { month: "2026-02", amount: 1320 },
+      ],
+      pipeline: {
+        sheet_routing: {
+          resolved_sheet_index: 3,
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    const exportButton = wrapper.find("button.message-action-chart");
+    await exportButton.trigger("click");
+
+    expect(downloadChartPng).toHaveBeenCalledWith("talk2sheet-sheet-3-line.png", message.chartSpec, message.chartData);
   });
 
   it("renders forecast summary cards from pipeline metadata", () => {
