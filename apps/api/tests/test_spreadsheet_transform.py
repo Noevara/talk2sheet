@@ -3,7 +3,8 @@ from __future__ import annotations
 import pandas as pd
 
 from app.services.spreadsheet.core.schema import Filter, FormulaMetric, Metric, PivotSpec, SelectionPlan, Sort, TransformPlan
-from app.services.spreadsheet.execution.exact_executor import exact_execution_support, execute_exact_plan
+from app.services.spreadsheet.execution.exact_executor import execute_exact_plan
+from app.services.spreadsheet.execution.exact_support import exact_execution_support
 from app.services.spreadsheet.execution.executor import apply_transform
 from app.services.spreadsheet.pipeline.column_profile import attach_column_profiles
 from app.services.spreadsheet.quality.repair import repair_transform_plan

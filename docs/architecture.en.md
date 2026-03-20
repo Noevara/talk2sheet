@@ -284,6 +284,23 @@ The system already includes request-level baseline observability:
   - `request_total_ms`
   - stage timings
 
+### 6.4 How To Troubleshoot With request_id
+
+When upload, preview, or conversation requests fail, the frontend error text tries to keep the `request_id` visible. A practical debugging flow is:
+
+1. copy the `request_id` shown in the UI
+2. search backend logs for the same `request_id`
+3. check these events first:
+   - `http_request_started / http_request_completed`
+   - `http_exception / request_validation_failed`
+   - `file_upload_started / file_upload_completed`
+   - `file_preview_loaded`
+   - `spreadsheet_chat_stream_requested / spreadsheet_chat_stream_opened`
+   - `spreadsheet_chat_started / spreadsheet_chat_completed / spreadsheet_chat_failed`
+4. if the HTTP request succeeded but SSE failed later, compare that id with the pipeline `observability.request_id`
+
+This is the shortest path from a user-visible error to the failing backend stage.
+
 ## 7. Current Boundaries
 
 ### 7.1 Supported now

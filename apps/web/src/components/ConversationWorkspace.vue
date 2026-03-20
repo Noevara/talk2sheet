@@ -10,6 +10,7 @@ defineProps<{
   question: string;
   mode: ChatMode;
   chatBusy: boolean;
+  errorMessage: string;
 }>();
 
 const emit = defineEmits<{
@@ -30,6 +31,8 @@ const emit = defineEmits<{
     </div>
 
     <ConversationPanel :messages="messages" :ui="ui" @clarification-select="emit('clarificationSelect', $event)" />
+
+    <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
     <ConversationComposer
       :ui="ui"

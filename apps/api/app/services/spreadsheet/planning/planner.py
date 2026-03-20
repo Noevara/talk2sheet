@@ -3,10 +3,9 @@ from __future__ import annotations
 from app.config import get_settings
 from ..conversation.context_interpreter import get_default_context_interpreter
 from ..openai_compatible import build_default_llm_client
-from .followup.planner_followup_context import infer_mode
 from .planner_heuristic import HeuristicPlanner as BaseHeuristicPlanner
 from .planner_llm import FallbackPlanner, OpenAIJsonPlannerImpl
-from .planner_types import PlanDraft, SpreadsheetPlanner
+from .planner_types import SpreadsheetPlanner
 
 
 class HeuristicPlanner(BaseHeuristicPlanner):

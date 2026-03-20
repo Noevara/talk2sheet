@@ -5,17 +5,11 @@ from pathlib import Path
 from app.config import get_settings
 from app.schemas import PreviewResponse
 from ..core.serialization import dataframe_to_rows
-from .dataframe_loader import load_dataframe, load_full_dataframe
+from .dataframe_loader import load_dataframe
 from .loader_common import (
-    HEADER_HEALTH_ATTR,
     HEADER_PLAN_ATTR,
-    SHEET_NAME_ATTR,
-    SOURCE_PATH_ATTR,
-    SOURCE_SHEET_INDEX_ATTR,
-    SUPPORTED_SPREADSHEET_SUFFIXES,
 )
 from .row_count_cache import count_sheet_rows
-from .sheet_metadata import read_sheet_descriptors
 
 
 def preview_sheet(path: Path, *, file_id: str, sheet_index: int = 1) -> PreviewResponse:

@@ -9,6 +9,7 @@ import WorkbookFeaturePanel from "../features/workbook/components/WorkbookFeatur
 import { useWorkbook } from "../features/workbook/composables/useWorkbook";
 import { messages, normalizeLocale } from "../i18n/messages";
 import type { Locale } from "../types";
+import { usePersistedAppSession } from "./usePersistedAppSession";
 
 const locale = ref<Locale>(normalizeLocale(globalThis.navigator?.language));
 const ui = computed(() => messages[locale.value]);
@@ -37,7 +38,11 @@ conversation.bindWorkbookContext({
   clearPendingSheetOverride: workbookState.clearPendingSheetOverride,
 });
 
-const errorMessage = computed(() => workbookState.errorMessage.value || conversation.errorMessage.value);
+usePersistedAppSession({
+  locale,
+  workbookState,
+  conversation,
+});
 </script>
 
 <template>
@@ -61,7 +66,7 @@ const errorMessage = computed(() => workbookState.errorMessage.value || conversa
         <WorkbookFeaturePanel
           :ui="ui"
           :state="workbookState"
-          :error-message="errorMessage"
+          :error-message="workbookState.errorMessage.value"
         />
 
         <ConversationFeaturePanel
@@ -70,6 +75,7 @@ const errorMessage = computed(() => workbookState.errorMessage.value || conversa
           :question="conversation.question.value"
           :mode="conversation.chatMode.value"
           :chat-busy="conversation.chatBusy.value"
+          :error-message="conversation.errorMessage.value"
           @clarification-select="conversation.handleClarificationSelect"
           @update:question="conversation.question.value = $event"
           @update:mode="conversation.chatMode.value = $event"

@@ -91,12 +91,25 @@ export interface UiMessages {
   forecastGrainMonthLabel: string;
   chartLabel: string;
   noChartData: string;
+  copyAnswerLabel: string;
+  copyAnswerDoneLabel: string;
+  exportCsvLabel: string;
   userLabel: string;
   assistantLabel: string;
   streamingLabel: string;
   uploadError: string;
+  uploadInvalidFileError: string;
+  uploadTooLargeError: string;
+  uploadServerError: string;
   previewError: string;
+  previewMissingError: string;
+  previewServerError: string;
   chatError: string;
+  chatConnectionError: string;
+  chatInterruptedError: string;
+  clarificationExpiredError: string;
+  restoreSessionExpiredError: string;
+  networkError: string;
   missingFile: string;
   missingQuestion: string;
   suggestionGroups: SuggestedPromptGroup[];
@@ -189,12 +202,25 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainMonthLabel: "Month",
     chartLabel: "Chart output",
     noChartData: "No chart data returned for this answer.",
+    copyAnswerLabel: "Copy answer",
+    copyAnswerDoneLabel: "Copied",
+    exportCsvLabel: "Export CSV",
     userLabel: "User",
     assistantLabel: "Assistant",
     streamingLabel: "streaming",
     uploadError: "Upload failed",
+    uploadInvalidFileError: "Only .xlsx, .xls, and .csv files are supported.",
+    uploadTooLargeError: "This file is too large to upload. Try a smaller workbook.",
+    uploadServerError: "The server could not process this file upload.",
     previewError: "Preview failed",
+    previewMissingError: "This uploaded workbook is no longer available. Upload it again.",
+    previewServerError: "The server could not load the selected sheet preview.",
     chatError: "Conversation failed",
+    chatConnectionError: "Cannot reach the streaming API. Check the backend and try again.",
+    chatInterruptedError: "The streaming response was interrupted. Retry the question.",
+    clarificationExpiredError: "The earlier clarification context has expired. Ask the question again.",
+    restoreSessionExpiredError: "The previous workbook session has expired. Upload the file again.",
+    networkError: "Cannot reach the API service. Check the local backend and try again.",
     missingFile: "Upload a spreadsheet before starting a conversation.",
     missingQuestion: "Enter a question first.",
     suggestionGroups: [
@@ -314,12 +340,25 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainMonthLabel: "月",
     chartLabel: "图表结果",
     noChartData: "当前回答未返回图表数据。",
+    copyAnswerLabel: "复制回答",
+    copyAnswerDoneLabel: "已复制",
+    exportCsvLabel: "导出 CSV",
     userLabel: "用户",
     assistantLabel: "助手",
     streamingLabel: "流式返回中",
     uploadError: "上传失败",
+    uploadInvalidFileError: "仅支持上传 .xlsx、.xls 和 .csv 文件。",
+    uploadTooLargeError: "当前文件过大，暂时无法上传，请换一个更小的工作簿。",
+    uploadServerError: "服务端暂时无法处理这次上传。",
     previewError: "预览失败",
+    previewMissingError: "之前上传的工作簿已不可用，请重新上传文件。",
+    previewServerError: "服务端暂时无法加载这个 sheet 的预览。",
     chatError: "对话失败",
+    chatConnectionError: "当前无法连接流式会话接口，请确认后端已启动后再重试。",
+    chatInterruptedError: "这次流式返回被中断了，请重试当前问题。",
+    clarificationExpiredError: "上一轮确认上下文已失效，请重新提问一次。",
+    restoreSessionExpiredError: "上一次工作簿会话已失效，请重新上传文件。",
+    networkError: "当前无法连接 API 服务，请确认本地后端已启动后再试。",
     missingFile: "请先上传表格文件。",
     missingQuestion: "请先输入问题。",
     suggestionGroups: [
@@ -439,12 +478,25 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainMonthLabel: "月",
     chartLabel: "チャート出力",
     noChartData: "この回答ではチャートデータが返されませんでした。",
+    copyAnswerLabel: "回答をコピー",
+    copyAnswerDoneLabel: "コピー済み",
+    exportCsvLabel: "CSV を書き出す",
     userLabel: "ユーザー",
     assistantLabel: "アシスタント",
     streamingLabel: "ストリーミング中",
     uploadError: "アップロード失敗",
+    uploadInvalidFileError: ".xlsx、.xls、.csv ファイルのみアップロードできます。",
+    uploadTooLargeError: "このファイルは大きすぎてアップロードできません。より小さいワークブックを試してください。",
+    uploadServerError: "サーバーがこのアップロードを処理できませんでした。",
     previewError: "プレビュー失敗",
+    previewMissingError: "以前アップロードしたワークブックは利用できなくなりました。再アップロードしてください。",
+    previewServerError: "サーバーがこのシートのプレビューを読み込めませんでした。",
     chatError: "対話失敗",
+    chatConnectionError: "ストリーミング API に接続できません。バックエンドを確認して再試行してください。",
+    chatInterruptedError: "ストリーミング応答が中断されました。同じ質問でもう一度試してください。",
+    clarificationExpiredError: "前の確認コンテキストは期限切れです。もう一度質問してください。",
+    restoreSessionExpiredError: "前回のワークブックセッションは期限切れです。ファイルを再アップロードしてください。",
+    networkError: "API サービスに接続できません。ローカルのバックエンドを確認して再試行してください。",
     missingFile: "先にスプレッドシートをアップロードしてください。",
     missingQuestion: "先に質問を入力してください。",
     suggestionGroups: [

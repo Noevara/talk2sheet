@@ -4,7 +4,7 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 它的核心目标是：用户围绕表格数据提出自然语言问题，系统在 workbook 内定位合适的目标 sheet，将问题翻译成可执行的分析计划，用 pandas 执行分析，再把答案和执行链路一起返回给前端。
 
-## v0.1.0 范围
+## 当前范围
 
 当前版本聚焦：
 
@@ -12,6 +12,7 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 - 自然语言表格分析
 - 带澄清和追问上下文的多轮对话
 - 可见的执行口径、路由信息、结果表格和图表
+- 回答一键复制、结果表 CSV 导出、刷新后的本地会话恢复
 - 中英日三语文档与界面
 
 当前已支持：
@@ -61,9 +62,20 @@ packages/contracts/  生成的 OpenAPI 契约产物
 
 ## 本地开发
 
+### 快速开始
+
+1. 复制 `.env.example` 为 `.env`
+2. 如果希望启用基于大模型的规划与回答，请填写 `TALK2SHEET_LLM_API_KEY`
+3. 启动后端
+4. 启动前端
+5. 打开 `http://127.0.0.1:5173`
+
+如果 `TALK2SHEET_LLM_API_KEY` 留空，系统仍可启动，但部分规划或回答链路会按当前 provider 配置退化到非 LLM 路径。
+
 ### 后端
 
 ```bash
+cp .env.example .env
 cd apps/api
 python3.11 -m venv .venv
 . .venv/bin/activate
@@ -85,6 +97,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 请基于 `.env.example` 在本地创建 `.env`，并在其中填写模型提供方相关配置。
 
+后端优先读取 `TALK2SHEET_LLM_API_KEY`，如果它为空，也兼容读取 `OPENAI_API_KEY` 作为兜底。
+
 不要把 `.env`、用户上传的表格、运行期元数据以及任何 API Key / 密码提交到公开仓库。
 
 ## Docker 启动
@@ -98,7 +112,15 @@ docker compose up --build
 - Web: `http://localhost:8080`
 - API: `http://localhost:8000`
 
-说明：当前 Docker 启动方式默认不会注入 LLM API Key。如果你希望容器内启用基于大模型的规划或回答能力，需要显式补充本地环境配置。
+如果希望容器内启用基于大模型的规划或回答能力：
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写 TALK2SHEET_LLM_API_KEY=...
+docker compose up --build
+```
+
+现在 `docker-compose.yml` 已经会把相关 provider 与 LLM 配置透传到 `api` 容器中。Key 仍然只保存在你的本地 `.env` 文件里，不应该提交到仓库。
 
 如果所在网络环境访问 Docker Hub 不稳定，可以在 `.env` 中覆盖基础镜像：
 
@@ -143,3 +165,14 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 - API: `pytest -q apps/api`
 - Web: `cd apps/web && npm run ci`
 - 全量: `make ci-check`
+
+## 常见问题
+
+- 上传后立刻失败：
+  请先确认文件格式是 `.xlsx`、`.xls` 或 `.csv`，如果文件特别大，先尝试一个更小的工作簿。
+- 预览或对话报错里带有 `request_id`：
+  可以保留这个 `request_id`，去后端日志中对应定位。
+- Docker 已启动但没有大模型回答：
+  请确认 `.env` 里已经填写 `TALK2SHEET_LLM_API_KEY`，并在修改后重新执行 `docker compose up --build`。
+- 刷新后恢复的会话又消失了：
+  说明上一次本地记录对应的上传文件已经不可用，需要重新上传。

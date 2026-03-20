@@ -4,7 +4,7 @@ Talk2Sheet is an open-source full-stack framework for conversational analytics o
 
 It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
-## v0.1.0 Scope
+## Current Scope
 
 Current release focus:
 
@@ -12,6 +12,7 @@ Current release focus:
 - natural-language spreadsheet analysis
 - multi-turn conversation with clarification and follow-up context
 - visible execution scope, routing summary, result tables, and charts
+- answer copy, CSV export, and local session restore after refresh
 - multilingual UI and documentation
 
 Supported now:
@@ -61,9 +62,20 @@ packages/contracts/  generated OpenAPI artifacts
 
 ## Local Development
 
+### Quick Start
+
+1. copy `.env.example` to `.env`
+2. if you want live LLM planning / answer generation, fill in `TALK2SHEET_LLM_API_KEY`
+3. start the backend
+4. start the frontend
+5. open `http://127.0.0.1:5173`
+
+If `TALK2SHEET_LLM_API_KEY` is left empty, the app still runs, but some planning or answer paths may fall back to non-LLM behavior depending on provider settings.
+
 ### Backend
 
 ```bash
+cp .env.example .env
 cd apps/api
 python3.11 -m venv .venv
 . .venv/bin/activate
@@ -85,6 +97,8 @@ In development, the frontend talks to `http://127.0.0.1:8000/api` by default.
 
 Copy `.env.example` to a local `.env` file and fill in your model provider settings there.
 
+The backend accepts `TALK2SHEET_LLM_API_KEY` directly and also accepts `OPENAI_API_KEY` as a fallback. Keep both local only.
+
 Do not commit `.env`, uploaded spreadsheets, runtime metadata, or any API keys/passwords to a public repository.
 
 ## Docker
@@ -99,6 +113,16 @@ After startup:
 - API: `http://localhost:8000`
 
 Note: the current Docker setup does not inject an LLM API key by default. If you want LLM-backed planning or answer generation in containers, add your local environment configuration explicitly.
+
+To enable LLM-backed planning in Docker:
+
+```bash
+cp .env.example .env
+# edit .env and set TALK2SHEET_LLM_API_KEY=...
+docker compose up --build
+```
+
+`docker-compose.yml` now forwards the key and related provider settings into the API container. The key still stays in your local `.env` and should not be committed.
 
 If Docker Hub access is unreliable in your region, override base images in `.env`:
 
@@ -143,3 +167,14 @@ Validation commands:
 - API: `pytest -q apps/api`
 - Web: `cd apps/web && npm run ci`
 - Combined: `make ci-check`
+
+## Troubleshooting
+
+- Upload fails immediately:
+  confirm the file is `.xlsx`, `.xls`, or `.csv`, and try a smaller workbook if the file is very large.
+- Preview or conversation shows a request id:
+  keep the `request_id` from the UI error text and match it with backend logs.
+- Docker starts but LLM-backed answers are missing:
+  check that `.env` contains `TALK2SHEET_LLM_API_KEY` and that `docker compose` was restarted after editing it.
+- A restored session disappears after refresh:
+  the previous uploaded file is no longer available under local storage metadata, so upload it again.

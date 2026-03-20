@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { streamSpreadsheetChat } from "./api";
+import { fetchPreview, streamSpreadsheetChat, uploadSpreadsheet } from "./api";
+import { REQUEST_ID_HEADER } from "./requestId";
 
 const originalFetch = globalThis.fetch;
 
@@ -35,5 +36,39 @@ describe("api error formatting", () => {
         }
       )
     ).rejects.toThrow("Spreadsheet file not found. [request_id=req-404]");
+  });
+
+  it("adds X-Request-ID to standard json requests", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ file_id: "file-1", sheet_index: 1, sheet_name: "Sheet1", columns: [], rows: [] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    ) as typeof fetch;
+
+    await fetchPreview("file-1", 1);
+
+    const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get(REQUEST_ID_HEADER)).toBeTruthy();
+  });
+
+  it("adds X-Request-ID to file uploads", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ file_id: "file-1", file_name: "demo.csv", file_type: "csv", sheets: [] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    ) as typeof fetch;
+
+    await uploadSpreadsheet(new File(["a,b\n1,2\n"], "demo.csv", { type: "text/csv" }));
+
+    const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get(REQUEST_ID_HEADER)).toBeTruthy();
   });
 });

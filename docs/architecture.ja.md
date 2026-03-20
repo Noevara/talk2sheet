@@ -284,6 +284,23 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
   - `request_total_ms`
   - stage timings
 
+### 6.4 request_id を使った切り分け
+
+アップロード、プレビュー、対話リクエストが失敗した場合、フロントエンドのエラー文言には可能な限り `request_id` が含まれます。切り分けは次の順で進めるのが実用的です。
+
+1. UI に表示された `request_id` を控える
+2. バックエンドログで同じ `request_id` を検索する
+3. まず次のイベントを確認する
+   - `http_request_started / http_request_completed`
+   - `http_exception / request_validation_failed`
+   - `file_upload_started / file_upload_completed`
+   - `file_preview_loaded`
+   - `spreadsheet_chat_stream_requested / spreadsheet_chat_stream_opened`
+   - `spreadsheet_chat_started / spreadsheet_chat_completed / spreadsheet_chat_failed`
+4. HTTP は成功しているのに SSE だけ失敗している場合は、pipeline の `observability.request_id` と突き合わせる
+
+これで、ユーザーが見たエラーをどのバックエンド段階の失敗かに短く結び付けられます。
+
 ## 7. 現在の境界
 
 ### 7.1 現在対応しているもの

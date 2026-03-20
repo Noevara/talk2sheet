@@ -69,6 +69,24 @@ export function useConversation(options: {
     sseChat.errorMessage.value = "";
   }
 
+  function restoreState(snapshot: ConversationSnapshot): void {
+    stopStreaming();
+    question.value = snapshot.question;
+    chatMessages.value = snapshot.chatMessages;
+    conversationId.value = snapshot.conversationId;
+    chatMode.value = snapshot.chatMode;
+    sseChat.errorMessage.value = "";
+  }
+
+  function snapshotState(): ConversationSnapshot {
+    return {
+      question: question.value,
+      chatMessages: chatMessages.value,
+      conversationId: conversationId.value,
+      chatMode: chatMode.value,
+    };
+  }
+
   function findPreviousUserQuestion(messageId: string): string {
     const messageIndex = chatMessages.value.findIndex((message) => message.id === messageId);
     if (messageIndex <= 0) {
@@ -170,7 +188,7 @@ export function useConversation(options: {
     const sourceMessage = chatMessages.value.find((message) => message.id === payload.messageId);
     const sourceQuestion = findPreviousUserQuestion(payload.messageId);
     if (!sourceQuestion) {
-      sseChat.errorMessage.value = options.ui.value.missingQuestion;
+      sseChat.errorMessage.value = options.ui.value.clarificationExpiredError;
       return;
     }
     const clarificationResolution: ClarificationResolution = {
@@ -192,6 +210,8 @@ export function useConversation(options: {
     chatMode,
     errorMessage: sseChat.errorMessage,
     bindWorkbookContext,
+    restoreState,
+    snapshotState,
     stopStreaming,
     resetConversation,
     submitQuestion,
@@ -200,3 +220,9 @@ export function useConversation(options: {
 }
 
 export type ConversationState = ReturnType<typeof useConversation>;
+export interface ConversationSnapshot {
+  question: string;
+  chatMessages: ChatMessage[];
+  conversationId: string | null;
+  chatMode: ChatMode;
+}

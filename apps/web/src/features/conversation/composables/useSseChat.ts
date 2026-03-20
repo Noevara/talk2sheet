@@ -1,15 +1,9 @@
 import { ref, type ComputedRef } from "vue";
 
 import type { UiMessages } from "../../../i18n/messages";
+import { formatChatError } from "../../../lib/errorMessages";
 import { streamSpreadsheetChat } from "../../../lib/api";
 import type { SpreadsheetChatRequest } from "../../../types";
-
-function extractError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return `${fallback}: ${error.message}`;
-  }
-  return fallback;
-}
 
 export function useSseChat(options: { ui: ComputedRef<UiMessages> }) {
   const chatBusy = ref(false);
@@ -42,7 +36,7 @@ export function useSseChat(options: { ui: ComputedRef<UiMessages> }) {
     } catch (error) {
       const message = controller.signal.aborted
         ? options.ui.value.aborted
-        : extractError(error, options.ui.value.chatError);
+        : formatChatError(error, options.ui.value);
       errorMessage.value = message;
       return {
         aborted: controller.signal.aborted,

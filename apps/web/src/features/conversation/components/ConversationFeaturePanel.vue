@@ -9,6 +9,7 @@ defineProps<{
   question: string;
   mode: ChatMode;
   chatBusy: boolean;
+  errorMessage: string;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +28,7 @@ const emit = defineEmits<{
     :question="question"
     :mode="mode"
     :chat-busy="chatBusy"
+    :error-message="errorMessage"
     @clarification-select="emit('clarificationSelect', $event)"
     @update:question="emit('update:question', $event)"
     @update:mode="emit('update:mode', $event)"

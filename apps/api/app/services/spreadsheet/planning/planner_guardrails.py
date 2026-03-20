@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..core.schema import ChartSpec, Metric, SelectionPlan, Sort, TransformPlan
+from ..core.schema import ChartSpec, Metric, SelectionPlan, TransformPlan
 
 
 def _contains_any(text: str, tokens: list[str]) -> bool:

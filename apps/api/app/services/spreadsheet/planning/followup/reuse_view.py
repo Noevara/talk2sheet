@@ -10,7 +10,7 @@ from .reuse_base import (
     _previous_ranked_row,
     _replace_filter,
 )
-from ...core.schema import ChartSpec, DerivedColumn, Metric, SelectionPlan, Sort, TransformPlan
+from ...core.schema import ChartSpec, DerivedColumn, Metric, Sort, TransformPlan
 from ..planner_intent_signals import (
     _day_count_question,
     _forecast_question,

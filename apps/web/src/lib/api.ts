@@ -1,31 +1,72 @@
 import type { PreviewResponse, SpreadsheetChatRequest, UploadedFileResponse } from "../types";
+import { createRequestId, REQUEST_ID_HEADER } from "./requestId";
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV ? "http://127.0.0.1:8000/api" : "/api")
 ).replace(/\/$/, "");
 
+type ApiFetchOptions = {
+  method?: string;
+  headers?: HeadersInit;
+  body?: BodyInit | null;
+  signal?: AbortSignal;
+};
+
 function buildUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${API_BASE_URL}${normalizedPath}`;
 }
 
-async function parseError(response: Response): Promise<string> {
+function buildRequestHeaders(headers?: HeadersInit): Headers {
+  const merged = new Headers(headers);
+  if (!merged.has(REQUEST_ID_HEADER)) {
+    merged.set(REQUEST_ID_HEADER, createRequestId());
+  }
+  return merged;
+}
+
+async function apiFetch(path: string, options: ApiFetchOptions = {}): Promise<Response> {
+  return fetch(buildUrl(path), {
+    ...options,
+    headers: buildRequestHeaders(options.headers),
+  });
+}
+
+export class ApiError extends Error {
+  status: number;
+  requestId: string | null;
+  detail: string;
+
+  constructor(status: number, detail: string, requestId: string | null = null) {
+    super(requestId ? `${detail} [request_id=${requestId}]` : detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.requestId = requestId;
+    this.detail = detail;
+  }
+}
+
+async function parseError(response: Response): Promise<{ detail: string; requestId: string | null }> {
   const headerRequestId = response.headers.get("x-request-id");
   try {
     const payload = (await response.json()) as { detail?: string; request_id?: string };
-    const requestId = payload.request_id || headerRequestId;
-    const detail = payload.detail || response.statusText;
-    return requestId ? `${detail} [request_id=${requestId}]` : detail;
+    return {
+      requestId: payload.request_id || headerRequestId,
+      detail: payload.detail || response.statusText || "Unknown error",
+    };
   } catch {
-    const detail = response.statusText || "Unknown error";
-    return headerRequestId ? `${detail} [request_id=${headerRequestId}]` : detail;
+    return {
+      requestId: headerRequestId,
+      detail: response.statusText || "Unknown error",
+    };
   }
 }
 
 async function ensureJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const parsedError = await parseError(response);
+    throw new ApiError(response.status, parsedError.detail, parsedError.requestId);
   }
   return (await response.json()) as T;
 }
@@ -34,7 +75,7 @@ export async function uploadSpreadsheet(file: File): Promise<UploadedFileRespons
   const body = new FormData();
   body.append("file", file);
 
-  const response = await fetch(buildUrl("/files/upload"), {
+  const response = await apiFetch("/files/upload", {
     method: "POST",
     body,
   });
@@ -43,7 +84,7 @@ export async function uploadSpreadsheet(file: File): Promise<UploadedFileRespons
 }
 
 export async function fetchPreview(fileId: string, sheetIndex: number): Promise<PreviewResponse> {
-  const response = await fetch(buildUrl(`/files/${fileId}/preview?sheet_index=${sheetIndex}`));
+  const response = await apiFetch(`/files/${fileId}/preview?sheet_index=${sheetIndex}`);
   return ensureJson<PreviewResponse>(response);
 }
 
@@ -69,7 +110,7 @@ export async function streamSpreadsheetChat(
     onMessage: (payload: Record<string, unknown>) => void;
   },
 ): Promise<void> {
-  const response = await fetch(buildUrl("/spreadsheet/chat/stream"), {
+  const response = await apiFetch("/spreadsheet/chat/stream", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -79,7 +120,8 @@ export async function streamSpreadsheetChat(
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(await parseError(response));
+    const parsedError = await parseError(response);
+    throw new ApiError(response.status, parsedError.detail, parsedError.requestId);
   }
 
   const reader = response.body.getReader();

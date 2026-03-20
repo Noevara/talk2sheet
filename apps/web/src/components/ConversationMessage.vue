@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 
+import { copyText, downloadCsv } from "../lib/browserExport";
+import type { UiMessages } from "../i18n/messages";
 import type { AnswerSegments, ChatMessage } from "../types";
 import ClarificationOptions from "./ClarificationOptions.vue";
 import DataTable from "./DataTable.vue";
@@ -9,58 +11,22 @@ import SimpleChart from "./SimpleChart.vue";
 const props = defineProps<{
   message: ChatMessage;
   showDebug?: boolean;
-  labels: {
-    userLabel: string;
-    assistantLabel: string;
-    streamingLabel: string;
-    scopeLabel: string;
-    metadataLabel: string;
-    sheetRoutingLabel: string;
-    requestedSheetLabel: string;
-    resolvedSheetLabel: string;
-    routingMethodLabel: string;
-    routingChangedLabel: string;
-    routingMethodSingleSheetLabel: string;
-    routingMethodExplicitLabel: string;
-    routingMethodClarificationLabel: string;
-    routingMethodManualOverrideLabel: string;
-    routingMethodFollowupLabel: string;
-    routingMethodAutoLabel: string;
-    routingMethodRequestedLabel: string;
-    conclusionLabel: string;
-    evidenceLabel: string;
-    riskNoteLabel: string;
-    clarificationLabel: string;
-    clarificationApplyLabel: string;
-    pipelineLabel: string;
-    selectionPlanLabel: string;
-    transformPlanLabel: string;
-    detailRowsLabel: string;
-    resultTableLabel: string;
-    forecastLabel: string;
-    forecastBadgeLabel: string;
-    forecastTargetLabel: string;
-    forecastEstimateLabel: string;
-    forecastRangeLabel: string;
-    forecastModelLabel: string;
-    forecastHistoryLabel: string;
-    forecastHistoryPointsLabel: string;
-    forecastGrainLabel: string;
-    forecastHorizonLabel: string;
-    forecastTableLabel: string;
-    forecastModelLinearLabel: string;
-    forecastModelSmoothingLabel: string;
-    forecastGrainDayLabel: string;
-    forecastGrainWeekLabel: string;
-    forecastGrainMonthLabel: string;
-    chartLabel: string;
-    noChartData: string;
-  };
+  ui: UiMessages;
 }>();
 
 const emit = defineEmits<{
   clarificationSelect: [value: string];
 }>();
+
+const copyState = ref<"idle" | "done">("idle");
+let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+onBeforeUnmount(() => {
+  if (copyFeedbackTimer) {
+    clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = null;
+  }
+});
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -138,10 +104,10 @@ const forecastMetaSource = computed(() => asRecord(transformMeta.value?.forecast
 function forecastModelLabel(model: string): string {
   const normalized = model.trim().toLowerCase();
   if (normalized === "linear_regression") {
-    return props.labels.forecastModelLinearLabel;
+    return props.ui.forecastModelLinearLabel;
   }
   if (normalized === "simple_exponential_smoothing") {
-    return props.labels.forecastModelSmoothingLabel;
+    return props.ui.forecastModelSmoothingLabel;
   }
   return model || "—";
 }
@@ -149,13 +115,13 @@ function forecastModelLabel(model: string): string {
 function forecastGrainLabel(grain: string): string {
   const normalized = grain.trim().toLowerCase();
   if (normalized === "day") {
-    return props.labels.forecastGrainDayLabel;
+    return props.ui.forecastGrainDayLabel;
   }
   if (normalized === "week") {
-    return props.labels.forecastGrainWeekLabel;
+    return props.ui.forecastGrainWeekLabel;
   }
   if (normalized === "month") {
-    return props.labels.forecastGrainMonthLabel;
+    return props.ui.forecastGrainMonthLabel;
   }
   return grain || "—";
 }
@@ -219,15 +185,47 @@ const forecastMeta = computed(() => {
 
 const detailTableLabel = computed(() => {
   if (forecastMeta.value) {
-    return props.labels.forecastTableLabel;
+    return props.ui.forecastTableLabel;
   }
   const isDetailRows = Boolean((transformPlan.value as { return_rows?: boolean } | null)?.return_rows);
-  return isDetailRows ? props.labels.detailRowsLabel : props.labels.resultTableLabel;
+  return isDetailRows ? props.ui.detailRowsLabel : props.ui.resultTableLabel;
 });
 
 const compactTable = computed(() => {
   const isDetailRows = Boolean((transformPlan.value as { return_rows?: boolean } | null)?.return_rows);
   return !isDetailRows;
+});
+
+const copyableAnswerText = computed(() => {
+  const sections: string[] = [];
+  if (structuredConclusion.value) {
+    sections.push(`${props.ui.conclusionLabel}\n${structuredConclusion.value}`);
+  }
+  if (structuredEvidence.value) {
+    sections.push(`${props.ui.evidenceLabel}\n${structuredEvidence.value}`);
+  }
+  if (structuredRiskNote.value) {
+    sections.push(`${props.ui.riskNoteLabel}\n${structuredRiskNote.value}`);
+  }
+
+  if (sections.length) {
+    return sections.join("\n\n");
+  }
+
+  const messageText = readString(props.message.text);
+  if (messageText) {
+    return messageText;
+  }
+  return readString(props.message.analysisText);
+});
+
+const exportCsvFilename = computed(() => {
+  const routing = asRecord(props.message.pipeline?.sheet_routing);
+  const resolvedSheetIndex = readNumber(routing?.resolved_sheet_index);
+  const tableType = forecastMeta.value ? "forecast" : "result";
+  return resolvedSheetIndex
+    ? `talk2sheet-sheet-${resolvedSheetIndex}-${tableType}.csv`
+    : `talk2sheet-${tableType}.csv`;
 });
 
 const answerSegments = computed<AnswerSegments | null>(() => {
@@ -308,19 +306,19 @@ const sheetRoutingMeta = computed(() => {
   const requestedSheetName = readString(meta?.requested_sheet_name);
   const changed = Boolean(requestedSheetIndex && resolvedSheetIndex && requestedSheetIndex !== resolvedSheetIndex);
 
-  let methodLabel = props.labels.routingMethodRequestedLabel;
+  let methodLabel = props.ui.routingMethodRequestedLabel;
   if (matchedBy === "single_sheet") {
-    methodLabel = props.labels.routingMethodSingleSheetLabel;
+    methodLabel = props.ui.routingMethodSingleSheetLabel;
   } else if (matchedBy === "explicit_reference") {
-    methodLabel = props.labels.routingMethodExplicitLabel;
+    methodLabel = props.ui.routingMethodExplicitLabel;
   } else if (matchedBy === "clarification_resolution") {
-    methodLabel = props.labels.routingMethodClarificationLabel;
+    methodLabel = props.ui.routingMethodClarificationLabel;
   } else if (matchedBy === "requested_override") {
-    methodLabel = props.labels.routingMethodManualOverrideLabel;
+    methodLabel = props.ui.routingMethodManualOverrideLabel;
   } else if (matchedBy === "followup") {
-    methodLabel = props.labels.routingMethodFollowupLabel;
+    methodLabel = props.ui.routingMethodFollowupLabel;
   } else if (matchedBy === "auto_routing") {
-    methodLabel = props.labels.routingMethodAutoLabel;
+    methodLabel = props.ui.routingMethodAutoLabel;
   }
 
   if (workbookSheetCount <= 1 && !changed && matchedBy === "requested_sheet") {
@@ -348,69 +346,92 @@ function formatMetaValue(value: unknown): string {
   }
   return String(value);
 }
+
+async function handleCopyAnswer(): Promise<void> {
+  if (!copyableAnswerText.value) {
+    return;
+  }
+  try {
+    await copyText(copyableAnswerText.value);
+    copyState.value = "done";
+    if (copyFeedbackTimer) {
+      clearTimeout(copyFeedbackTimer);
+    }
+    copyFeedbackTimer = globalThis.setTimeout(() => {
+      copyState.value = "idle";
+      copyFeedbackTimer = null;
+    }, 1800);
+  } catch {
+    copyState.value = "idle";
+  }
+}
+
+function handleExportCsv(): void {
+  downloadCsv(exportCsvFilename.value, detailColumns.value, detailRows.value);
+}
 </script>
 
 <template>
   <article class="message-card" :class="`message-card-${message.role}`">
     <div class="message-head">
       <span class="message-role">
-        {{ message.role === "user" ? labels.userLabel : labels.assistantLabel }}
+        {{ message.role === "user" ? ui.userLabel : ui.assistantLabel }}
       </span>
-      <span v-if="message.status === 'streaming'" class="message-streaming">{{ labels.streamingLabel }}</span>
+      <span v-if="message.status === 'streaming'" class="message-streaming">{{ ui.streamingLabel }}</span>
     </div>
 
     <template v-if="message.role === 'assistant' && hasStructuredAnswer">
       <div class="answer-stack">
         <div v-if="forecastMeta" class="forecast-panel">
           <div class="forecast-head">
-            <div class="answer-label forecast-label">{{ labels.forecastLabel }}</div>
-            <span class="forecast-badge">{{ labels.forecastBadgeLabel }}</span>
+            <div class="answer-label forecast-label">{{ ui.forecastLabel }}</div>
+            <span class="forecast-badge">{{ ui.forecastBadgeLabel }}</span>
           </div>
 
           <div class="forecast-grid">
             <div class="forecast-card forecast-card-primary">
-              <span class="forecast-card-label">{{ labels.forecastEstimateLabel }}</span>
+              <span class="forecast-card-label">{{ ui.forecastEstimateLabel }}</span>
               <strong>{{ forecastMeta.estimate }}</strong>
-              <small>{{ labels.forecastTargetLabel }} {{ forecastMeta.period }}</small>
+              <small>{{ ui.forecastTargetLabel }} {{ forecastMeta.period }}</small>
             </div>
 
             <div class="forecast-card">
-              <span class="forecast-card-label">{{ labels.forecastRangeLabel }}</span>
+              <span class="forecast-card-label">{{ ui.forecastRangeLabel }}</span>
               <strong>{{ forecastMeta.range }}</strong>
             </div>
 
             <div class="forecast-card">
-              <span class="forecast-card-label">{{ labels.forecastModelLabel }}</span>
+              <span class="forecast-card-label">{{ ui.forecastModelLabel }}</span>
               <strong>{{ forecastMeta.modelLabel }}</strong>
-              <small>{{ labels.forecastGrainLabel }} {{ forecastMeta.grainLabel }}</small>
+              <small>{{ ui.forecastGrainLabel }} {{ forecastMeta.grainLabel }}</small>
             </div>
 
             <div class="forecast-card">
-              <span class="forecast-card-label">{{ labels.forecastHistoryLabel }}</span>
+              <span class="forecast-card-label">{{ ui.forecastHistoryLabel }}</span>
               <strong>{{ forecastMeta.historyRange }}</strong>
               <small v-if="forecastMeta.historyPoints">
-                {{ labels.forecastHistoryPointsLabel }} {{ forecastMeta.historyPoints }}
+                {{ ui.forecastHistoryPointsLabel }} {{ forecastMeta.historyPoints }}
               </small>
             </div>
           </div>
 
           <div v-if="forecastMeta.horizon" class="forecast-footnote">
-            {{ labels.forecastHorizonLabel }} {{ forecastMeta.horizon }}
+            {{ ui.forecastHorizonLabel }} {{ forecastMeta.horizon }}
           </div>
         </div>
 
         <div class="answer-block">
-          <div class="answer-label">{{ labels.conclusionLabel }}</div>
+          <div class="answer-label">{{ ui.conclusionLabel }}</div>
           <p class="message-text">{{ structuredConclusion }}</p>
         </div>
 
         <div v-if="structuredEvidence" class="answer-block answer-block-secondary">
-          <div class="answer-label">{{ labels.evidenceLabel }}</div>
+          <div class="answer-label">{{ ui.evidenceLabel }}</div>
           <p class="message-secondary">{{ structuredEvidence }}</p>
         </div>
 
         <div v-if="structuredRiskNote" class="answer-block answer-block-risk">
-          <div class="answer-label">{{ labels.riskNoteLabel }}</div>
+          <div class="answer-label">{{ ui.riskNoteLabel }}</div>
           <p class="message-risk">{{ structuredRiskNote }}</p>
         </div>
       </div>
@@ -422,8 +443,14 @@ function formatMetaValue(value: unknown): string {
       </p>
     </template>
 
+    <div v-if="message.role === 'assistant' && copyableAnswerText" class="message-actions">
+      <button type="button" class="message-action" @click="handleCopyAnswer">
+        {{ copyState === "done" ? ui.copyAnswerDoneLabel : ui.copyAnswerLabel }}
+      </button>
+    </div>
+
     <div v-if="message.executionDisclosure" class="message-scope">
-      <div class="scope-label">{{ labels.scopeLabel }}</div>
+      <div class="scope-label">{{ ui.scopeLabel }}</div>
       <div class="scope-body">
         <div>{{ message.executionDisclosure.scope_text }}</div>
         <div v-if="message.executionDisclosure.scope_warning">{{ message.executionDisclosure.scope_warning }}</div>
@@ -432,34 +459,34 @@ function formatMetaValue(value: unknown): string {
     </div>
 
     <div v-if="message.role === 'assistant' && sheetRoutingMeta" class="message-routing">
-      <div class="section-label">{{ labels.sheetRoutingLabel }}</div>
+      <div class="section-label">{{ ui.sheetRoutingLabel }}</div>
       <div class="routing-grid">
         <div class="routing-item">
-          <span>{{ labels.requestedSheetLabel }}</span>
+          <span>{{ ui.requestedSheetLabel }}</span>
           <strong>{{ sheetRoutingMeta.requestedLabel }}</strong>
         </div>
         <div class="routing-item">
-          <span>{{ labels.resolvedSheetLabel }}</span>
+          <span>{{ ui.resolvedSheetLabel }}</span>
           <strong>{{ sheetRoutingMeta.resolvedLabel }}</strong>
         </div>
         <div class="routing-item">
-          <span>{{ labels.routingMethodLabel }}</span>
+          <span>{{ ui.routingMethodLabel }}</span>
           <strong>{{ sheetRoutingMeta.methodLabel }}</strong>
         </div>
       </div>
-      <div v-if="sheetRoutingMeta.changed" class="routing-note">{{ labels.routingChangedLabel }}</div>
+      <div v-if="sheetRoutingMeta.changed" class="routing-note">{{ ui.routingChangedLabel }}</div>
     </div>
 
     <ClarificationOptions
       v-if="clarification"
       :clarification="clarification"
-      :title="labels.clarificationLabel"
-      :apply-label="labels.clarificationApplyLabel"
+      :title="ui.clarificationLabel"
+      :apply-label="ui.clarificationApplyLabel"
       @select="emit('clarificationSelect', $event)"
     />
 
     <details v-if="props.showDebug && message.meta" class="message-meta">
-      <summary>{{ labels.metadataLabel }}</summary>
+      <summary>{{ ui.metadataLabel }}</summary>
       <dl class="meta-grid">
         <template v-for="(value, key) in message.meta" :key="key">
           <dt>{{ key }}</dt>
@@ -469,34 +496,39 @@ function formatMetaValue(value: unknown): string {
     </details>
 
     <div v-if="message.chartSpec" class="message-chart">
-      <div class="section-label">{{ labels.chartLabel }}</div>
+      <div class="section-label">{{ ui.chartLabel }}</div>
       <SimpleChart
         :spec="message.chartSpec"
         :data="message.chartData || []"
-        :no-data-text="labels.noChartData"
+        :no-data-text="ui.noChartData"
       />
     </div>
 
     <div v-if="detailRows.length" class="message-detail-table">
-      <div class="section-label">{{ detailTableLabel }}</div>
+      <div class="section-head">
+        <div class="section-label">{{ detailTableLabel }}</div>
+        <button type="button" class="message-action message-action-secondary" @click="handleExportCsv">
+          {{ ui.exportCsvLabel }}
+        </button>
+      </div>
       <DataTable
         :columns="detailColumns"
         :rows="detailRows"
-        :empty-text="labels.noChartData"
+        :empty-text="ui.noChartData"
         :compact="compactTable"
       />
     </div>
 
     <details v-if="props.showDebug && message.pipeline" class="message-pipeline">
-      <summary>{{ labels.pipelineLabel }}</summary>
+      <summary>{{ ui.pipelineLabel }}</summary>
 
       <div v-if="selectionPlan" class="pipeline-block">
-        <div class="section-label">{{ labels.selectionPlanLabel }}</div>
+        <div class="section-label">{{ ui.selectionPlanLabel }}</div>
         <pre>{{ formatJson(selectionPlan) }}</pre>
       </div>
 
       <div v-if="transformPlan" class="pipeline-block">
-        <div class="section-label">{{ labels.transformPlanLabel }}</div>
+        <div class="section-label">{{ ui.transformPlanLabel }}</div>
         <pre>{{ formatJson(transformPlan) }}</pre>
       </div>
     </details>
@@ -677,6 +709,43 @@ function formatMetaValue(value: unknown): string {
   min-width: 0;
 }
 
+.message-actions,
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.message-actions {
+  margin-top: 0.8rem;
+}
+
+.section-head {
+  margin-bottom: 0.5rem;
+}
+
+.message-action {
+  border: 1px solid rgba(29, 95, 133, 0.16);
+  border-radius: 999px;
+  padding: 0.42rem 0.74rem;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1d5f85;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.message-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(29, 95, 133, 0.26);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.message-action-secondary {
+  color: #173254;
+}
+
 .scope-label,
 .meta-label,
 .section-label {
@@ -685,6 +754,10 @@ function formatMetaValue(value: unknown): string {
   text-transform: uppercase;
   color: rgba(23, 50, 84, 0.62);
   margin-bottom: 0.5rem;
+}
+
+.section-head .section-label {
+  margin-bottom: 0;
 }
 
 .scope-body {

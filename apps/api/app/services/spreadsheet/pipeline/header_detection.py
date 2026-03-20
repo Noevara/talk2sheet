@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import math
 import re
 from functools import lru_cache
 from pathlib import Path

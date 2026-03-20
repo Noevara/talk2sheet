@@ -4,7 +4,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
-## v0.1.0 の対象範囲
+## 現在の対象範囲
 
 現在のリリースは次に集中しています。
 
@@ -12,6 +12,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - 自然言語によるスプレッドシート分析
 - clarification と follow-up 文脈を持つ複数ターン対話
 - 実行範囲、routing、結果テーブル、チャートの可視化
+- 回答コピー、CSV エクスポート、リロード後のローカルセッション復元
 - 英語 / 中国語 / 日本語のドキュメントと UI
 
 現在対応しているもの：
@@ -61,9 +62,20 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 
 ## ローカル開発
 
+### クイックスタート
+
+1. `.env.example` を `.env` にコピーする
+2. LLM ベースの計画や回答を使いたい場合は `TALK2SHEET_LLM_API_KEY` を設定する
+3. バックエンドを起動する
+4. フロントエンドを起動する
+5. `http://127.0.0.1:5173` を開く
+
+`TALK2SHEET_LLM_API_KEY` が空でもアプリは起動しますが、プロバイダ設定によっては一部の計画や回答経路が非 LLM 動作にフォールバックします。
+
 ### バックエンド
 
 ```bash
+cp .env.example .env
 cd apps/api
 python3.11 -m venv .venv
 . .venv/bin/activate
@@ -85,6 +97,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 `.env.example` を元にローカルの `.env` を作成し、モデルプロバイダ関連の設定はそこに記入してください。
 
+バックエンドは `TALK2SHEET_LLM_API_KEY` を優先し、空の場合は `OPENAI_API_KEY` もフォールバックとして受け付けます。
+
 `.env`、ユーザーがアップロードした表計算ファイル、実行時メタデータ、API キーやパスワードは公開リポジトリへコミットしないでください。
 
 ## Docker
@@ -98,7 +112,15 @@ docker compose up --build
 - Web: `http://localhost:8080`
 - API: `http://localhost:8000`
 
-注意: 現在の Docker 構成では、LLM API Key はデフォルトでは注入されません。コンテナ内で LLM ベースの計画や回答生成を有効にしたい場合は、ローカル環境設定を明示的に追加してください。
+コンテナ内で LLM ベースの計画や回答生成を有効にしたい場合は、次のように設定します。
+
+```bash
+cp .env.example .env
+# .env を編集して TALK2SHEET_LLM_API_KEY=... を設定
+docker compose up --build
+```
+
+現在の `docker-compose.yml` は provider 設定と LLM 設定を `api` コンテナへ引き渡します。キー自体はローカルの `.env` にのみ保存し、リポジトリへは含めないでください。
 
 Docker Hub への接続が不安定な環境では、`.env` でベースイメージを上書きできます。
 
@@ -143,3 +165,14 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 - API: `pytest -q apps/api`
 - Web: `cd apps/web && npm run ci`
 - 全体: `make ci-check`
+
+## よくある確認ポイント
+
+- アップロードがすぐ失敗する:
+  ファイル形式が `.xlsx`、`.xls`、`.csv` か確認し、非常に大きい場合はより小さいワークブックで試してください。
+- プレビューや対話エラーに `request_id` が表示される:
+  その `request_id` をバックエンドログと突き合わせて原因を追えます。
+- Docker は起動したのに LLM 回答が出ない:
+  `.env` に `TALK2SHEET_LLM_API_KEY` が入っているか、編集後に `docker compose up --build` をやり直したか確認してください。
+- リロード後に復元されたセッションが消える:
+  以前アップロードしたファイルがもう利用できないため、再アップロードが必要です。

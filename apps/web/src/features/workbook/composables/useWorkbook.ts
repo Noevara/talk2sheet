@@ -2,18 +2,23 @@ import { computed, ref, type ComputedRef } from "vue";
 
 import type { UiMessages } from "../../../i18n/messages";
 import { fetchPreview, uploadSpreadsheet } from "../../../lib/api";
+import { formatPreviewError, formatUploadError, isMissingWorkbookError } from "../../../lib/errorMessages";
 import type { PreviewResponse, UploadedFileResponse } from "../../../types";
-
-function extractError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return `${fallback}: ${error.message}`;
-  }
-  return fallback;
-}
 
 function formatSheetName(sheetName: string, sheetIndex: number): string {
   const normalized = sheetName.trim();
   return normalized || `#${sheetIndex}`;
+}
+
+function isSupportedFile(file: File): boolean {
+  return /\.(xlsx|xls|csv)$/i.test(file.name);
+}
+
+export interface WorkbookSnapshot {
+  workbook: UploadedFileResponse | null;
+  selectedSheetIndex: number;
+  pendingSheetOverride: boolean;
+  preview: PreviewResponse | null;
 }
 
 export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConversation: () => void }) {
@@ -57,7 +62,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
       selectedSheetIndex.value = sheetIndex;
       preview.value = await fetchPreview(workbook.value.file_id, sheetIndex);
     } catch (error) {
-      errorMessage.value = extractError(error, options.ui.value.previewError);
+      errorMessage.value = formatPreviewError(error, options.ui.value);
     } finally {
       previewBusy.value = false;
     }
@@ -82,6 +87,9 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     errorMessage.value = "";
 
     try {
+      if (!isSupportedFile(file)) {
+        throw new Error(options.ui.value.uploadInvalidFileError);
+      }
       const uploaded = await uploadSpreadsheet(file);
       workbook.value = uploaded;
       preview.value = null;
@@ -90,10 +98,63 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
       const firstSheet = uploaded.sheets[0]?.index || 1;
       await loadPreview(firstSheet, { resetConversation: false });
     } catch (error) {
-      errorMessage.value = extractError(error, options.ui.value.uploadError);
+      if (error instanceof Error && error.message === options.ui.value.uploadInvalidFileError) {
+        errorMessage.value = error.message;
+      } else {
+        errorMessage.value = formatUploadError(error, options.ui.value);
+      }
     } finally {
       uploadBusy.value = false;
       target.value = "";
+    }
+  }
+
+  function restoreState(snapshot: WorkbookSnapshot): void {
+    workbook.value = snapshot.workbook;
+    selectedSheetIndex.value = snapshot.selectedSheetIndex || 1;
+    pendingSheetOverride.value = snapshot.pendingSheetOverride;
+    preview.value = snapshot.preview;
+    errorMessage.value = "";
+  }
+
+  function snapshotState(): WorkbookSnapshot {
+    return {
+      workbook: workbook.value,
+      selectedSheetIndex: selectedSheetIndex.value,
+      pendingSheetOverride: pendingSheetOverride.value,
+      preview: preview.value,
+    };
+  }
+
+  function clearState(): void {
+    workbook.value = null;
+    selectedSheetIndex.value = 1;
+    pendingSheetOverride.value = false;
+    preview.value = null;
+    errorMessage.value = "";
+  }
+
+  async function revalidateRestoredState(): Promise<boolean> {
+    if (!workbook.value) {
+      return true;
+    }
+
+    previewBusy.value = true;
+    errorMessage.value = "";
+    try {
+      preview.value = await fetchPreview(workbook.value.file_id, selectedSheetIndex.value);
+      return true;
+    } catch (error) {
+      if (isMissingWorkbookError(error)) {
+        clearState();
+        options.resetConversation();
+        errorMessage.value = options.ui.value.restoreSessionExpiredError;
+        return false;
+      }
+      errorMessage.value = formatPreviewError(error, options.ui.value);
+      return false;
+    } finally {
+      previewBusy.value = false;
     }
   }
 
@@ -107,6 +168,10 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     errorMessage,
     activeSheetLabel,
     showActiveSheetNamePill,
+    restoreState,
+    snapshotState,
+    clearState,
+    revalidateRestoredState,
     loadPreview,
     handleManualSheetSelect,
     clearPendingSheetOverride,

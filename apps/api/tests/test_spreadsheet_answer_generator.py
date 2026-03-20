@@ -14,7 +14,7 @@ from app.services.spreadsheet.conversation.answer_generator import (
 from app.services.spreadsheet.core.schema import ChartSpec, FormulaMetric, Metric, PivotSpec, SelectionPlan, Sort, TransformPlan
 from app.services.spreadsheet.openai_compatible import OpenAICompatibleError
 from app.services.spreadsheet.planning.intent_models import AnalysisIntent
-from app.services.spreadsheet.planning.planner import PlanDraft
+from app.services.spreadsheet.planning.planner_types import PlanDraft
 
 
 def _ranking_context() -> AnswerGeneratorContext:

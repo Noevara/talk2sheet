@@ -6,7 +6,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from ..openai_compatible import OpenAICompatibleError, build_default_llm_client
+from ..openai_compatible import build_default_llm_client
 from ..planning.planning_prompts import build_followup_interpreter_prompt
 
 

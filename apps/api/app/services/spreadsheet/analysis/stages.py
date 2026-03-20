@@ -8,12 +8,12 @@ import pandas as pd
 from ..core.i18n import t
 from ..core.schema import ChartSpec, SelectionPlan, TransformPlan
 from ..execution.exact_executor import (
-    exact_execution_source_context,
-    exact_execution_support,
     execute_exact_plan,
     execute_exact_plan_from_source,
     execute_exact_plan_with_source_df,
 )
+from ..execution.exact_source import exact_execution_source_context
+from ..execution.exact_support import exact_execution_support
 from ..execution.executor import apply_selection, apply_transform
 from ..execution.forecast_executor import forecast_time_series
 from ..pipeline import HEADER_PLAN_ATTR

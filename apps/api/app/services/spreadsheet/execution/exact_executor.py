@@ -10,8 +10,7 @@ from .exact_metadata import (
     build_exact_execution_meta,
     build_exact_execution_source_meta,
 )
-from .exact_source import exact_execution_source_context, load_exact_source_dataframe
-from .exact_support import exact_execution_support
+from .exact_source import load_exact_source_dataframe
 
 
 def execute_exact_plan(df: Any, selection_plan: SelectionPlan, transform_plan: TransformPlan) -> tuple[Any, dict[str, Any]]:

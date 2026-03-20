@@ -10,7 +10,7 @@ import pytest
 from app.services.spreadsheet.conversation.conversation_memory import ConversationStore, conversation_store
 from app.services.spreadsheet.core.schema import Metric, SelectionPlan, TransformPlan
 from app.services.spreadsheet.planning.intent_models import AnalysisIntent
-from app.services.spreadsheet.planning.planner import PlanDraft
+from app.services.spreadsheet.planning.planner_types import PlanDraft
 from app.services.spreadsheet.service import stream_spreadsheet_chat
 
 
