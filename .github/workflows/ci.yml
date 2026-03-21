@@ -76,6 +76,45 @@ jobs:
         if: steps.intent_eval.outcome == 'failure'
         run: exit 1
 
+  batch-perf-baseline:
+    name: Batch Perf Baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install API dependencies
+        run: pip install -e "apps/api[dev]"
+
+      - name: Run batch perf baseline
+        id: batch_perf
+        continue-on-error: true
+        run: python apps/api/scripts/eval_batch_perf_baseline.py --json
+
+      - name: Upload batch perf report
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-perf-baseline-report
+          path: apps/api/.artifacts/batch_perf_baseline_report.json
+          if-no-files-found: ignore
+
+      - name: Upload batch perf failure snapshot
+        if: steps.batch_perf.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-perf-baseline-failure-snapshot
+          path: apps/api/.artifacts/batch_perf_baseline_failure_snapshot.json
+          if-no-files-found: ignore
+
+      - name: Fail job on batch perf baseline mismatch
+        if: steps.batch_perf.outcome == 'failure'
+        run: exit 1
+
   web:
     name: Web
     runs-on: ubuntu-latest

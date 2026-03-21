@@ -25,5 +25,6 @@ output/
 .vscode/
 apps/api/.venv/
 apps/api/data/
+apps/api/.artifacts/
 apps/web/dist/
 noevara/
