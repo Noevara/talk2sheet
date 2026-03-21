@@ -4,7 +4,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
-現在の安定版リリースは `v0.3.0` です。
+現在の安定版リリースは `v0.3.1` です。
 
 ## 現在の対象範囲
 
@@ -70,7 +70,7 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 - 日本語: このファイル
 - アーキテクチャ: [docs/architecture.ja.md](./docs/architecture.ja.md)
 - 変更履歴: [CHANGELOG.md](./CHANGELOG.md)
-- 最新リリースノート: [docs/releases/v0.3.0.md](./docs/releases/v0.3.0.md)
+- 最新リリースノート: [docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
 
 ## 使い方
 

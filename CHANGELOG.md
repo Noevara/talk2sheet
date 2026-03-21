@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.3.1 (2026-03-21)
+
+Sequential multi-sheet task-workflow completion release, focused on step visibility, scope stability, and step-level observability.
+
+### Highlights
+
+- Added task-step workflow payloads and UI cards (`pending/current/completed/failed`) for sequential A->B analysis
+- Added one-click `continue_next_step` follow-up action routing
+- Added analysis-anchor generation, persistence, and follow-up reuse to reduce scope drift
+- Added previous-vs-current step comparison card (non-join) for sequential sheet results
+- Added step-level observability events:
+  - `task_step_started`
+  - `task_step_completed`
+  - `task_step_failed`
+- Added request-linked step event fields (`request_id`, `step_id`, `sheet`) for faster troubleshooting
+- Synced README and architecture docs in English / Chinese / Japanese with v0.3.1 capability wording
+
+### Current Scope
+
+- Workbook-aware routing with one-sheet execution per turn
+- Sequential multi-sheet workflow with task steps and continue-next-step action
+- Follow-up scope carry-over via analysis anchor
+- Row count, totals, averages, ranking, detail rows, trend, compare, charts, lightweight forecast
+- Request-level and step-level observability
+
+### Out of Scope
+
+- Cross-sheet join execution in one step
+- Unrestricted combined multi-sheet analysis
+- Advanced statistics and causal inference
+- Production-ready object storage and persistent session backends
+
+### Validation
+
+- `pytest -q $(rg --files apps/api/tests | rg 'spreadsheet.*\.py$')`
+- `cd apps/web && npm run ci`
+
 ## v0.3.0 (2026-03-21)
 
 Workbook-level routing and multi-sheet usability update, focused on safe decomposition and clearer user-visible reasoning.

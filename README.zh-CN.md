@@ -4,7 +4,7 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 它的核心目标是：用户围绕表格数据提出自然语言问题，系统在 workbook 内定位合适的目标 sheet，将问题翻译成可执行的分析计划，用 pandas 执行分析，再把答案和执行链路一起返回给前端。
 
-当前稳定版本：`v0.3.0`。
+当前稳定版本：`v0.3.1`。
 
 ## 当前范围
 
@@ -70,7 +70,7 @@ packages/contracts/  生成的 OpenAPI 契约产物
 - 日文：[README.ja.md](./README.ja.md)
 - 架构文档：[docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)
 - 版本说明：[CHANGELOG.md](./CHANGELOG.md)
-- 最新发布说明：[docs/releases/v0.3.0.md](./docs/releases/v0.3.0.md)
+- 最新发布说明：[docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
 
 ## 使用方式
 

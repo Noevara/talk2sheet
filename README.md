@@ -4,7 +4,7 @@ Talk2Sheet is an open-source full-stack framework for conversational analytics o
 
 It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
-Latest stable release: `v0.3.0`.
+Latest stable release: `v0.3.1`.
 
 ## Current Scope
 
@@ -70,7 +70,7 @@ packages/contracts/  generated OpenAPI artifacts
 - Japanese: [README.ja.md](./README.ja.md)
 - Architecture overview: [docs/architecture.en.md](./docs/architecture.en.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
-- Latest release notes: [docs/releases/v0.3.0.md](./docs/releases/v0.3.0.md)
+- Latest release notes: [docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
 
 ## How It Works
 
