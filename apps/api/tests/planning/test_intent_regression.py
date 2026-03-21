@@ -19,6 +19,10 @@ def test_intent_regression_fixture_covers_required_categories() -> None:
     cases = _load_cases()
     categories = {case.category for case in cases}
     assert {"compare", "filter", "time_agg", "topn", "detail_summary"} <= categories
+    assert {"multi_sheet_clarification", "multi_sheet_sequence", "multi_sheet_pronoun"} <= categories
+
+    scenarios = {case.scenario for case in cases}
+    assert {"single_sheet", "multi_sheet_sequence", "multi_sheet_pronoun", "multi_sheet_clarification"} <= scenarios
 
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda case: case.id)
@@ -36,6 +40,7 @@ def test_intent_regression_failure_snapshot_contains_expected_context() -> None:
     case = IntentRegressionCase(
         id="snapshot_failure_case",
         category="topn",
+        scenario="single_sheet",
         dataset="billing",
         chat_text="Show the top 3 services by amount.",
         requested_mode="auto",
@@ -48,6 +53,7 @@ def test_intent_regression_failure_snapshot_contains_expected_context() -> None:
     assert len(snapshot) == 1
     item = snapshot[0]
     assert item["id"] == case.id
+    assert item["scenario"] == "single_sheet"
     assert item["expected"]["intent"] == "share"
     assert item["actual"]["intent"] == "ranking"
     assert isinstance(item["actual"]["planner_meta"], dict)

@@ -43,6 +43,77 @@ def _is_explanation_like_question(chat_text: str) -> bool:
     )
 
 
+def _is_sheet_switch_followup(chat_text: str) -> bool:
+    return _sheet_reference_hint(chat_text) in {"another", "previous"}
+
+
+def _sheet_reference_hint(chat_text: str) -> str:
+    text = str(chat_text or "").strip()
+    if not text:
+        return "auto"
+    if _contains_any(
+        text,
+        (
+            "previous sheet",
+            "last sheet",
+            "back to previous sheet",
+            "go back to previous sheet",
+            "上一个sheet",
+            "上一张sheet",
+            "上一个工作表",
+            "上一张工作表",
+            "回到上一个sheet",
+            "回到上一个工作表",
+            "前一个sheet",
+            "前一个工作表",
+            "前のシート",
+            "戻って前のシート",
+        ),
+    ):
+        return "previous"
+    if _contains_any(
+        text,
+        (
+            "another sheet",
+            "other sheet",
+            "next sheet",
+            "switch sheet",
+            "different sheet",
+            "另一个sheet",
+            "另外一个sheet",
+            "另一个工作表",
+            "另外一个工作表",
+            "换个sheet",
+            "换一个sheet",
+            "再看另一个",
+            "别的sheet",
+            "其他sheet",
+            "別のシート",
+            "他のシート",
+            "別シート",
+        ),
+    ):
+        return "another"
+    if _contains_any(
+        text,
+        (
+            "current sheet",
+            "this sheet",
+            "keep current sheet",
+            "当前sheet",
+            "这个sheet",
+            "当前工作表",
+            "这个工作表",
+            "本sheet",
+            "本工作表",
+            "今のシート",
+            "現在のシート",
+        ),
+    ):
+        return "current"
+    return "auto"
+
+
 def _is_followup_question(chat_text: str) -> bool:
     text = str(chat_text or "").strip()
     if not text:
@@ -154,6 +225,39 @@ def _safe_clarification_resolution(value: Any) -> dict[str, Any] | None:
     return payload
 
 
+def _build_visited_sheets(turns: list[dict[str, Any]], *, limit: int = 6) -> list[dict[str, Any]]:
+    visited: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for turn in turns:
+        sheet_index = int(turn.get("sheet_index") or 0)
+        sheet_name = str(turn.get("sheet_name") or "").strip()
+        if sheet_index <= 0 or sheet_index in seen:
+            continue
+        seen.add(sheet_index)
+        visited.append({"sheet_index": sheet_index, "sheet_name": sheet_name})
+    return visited[-max(1, int(limit)) :]
+
+
+def _build_recent_sheet_trajectory(turns: list[dict[str, Any]], *, limit: int = 8) -> list[dict[str, Any]]:
+    trajectory: list[dict[str, Any]] = []
+    for turn in turns:
+        sheet_index = int(turn.get("sheet_index") or 0)
+        sheet_name = str(turn.get("sheet_name") or "").strip()
+        if sheet_index <= 0:
+            continue
+        if trajectory and int(trajectory[-1].get("sheet_index") or 0) == sheet_index:
+            continue
+        trajectory.append({"sheet_index": sheet_index, "sheet_name": sheet_name})
+    return trajectory[-max(1, int(limit)) :]
+
+
+def _previous_sheet_from_trajectory(trajectory: list[dict[str, Any]]) -> tuple[int, str]:
+    if len(trajectory) < 2:
+        return 0, ""
+    previous = trajectory[-2]
+    return int(previous.get("sheet_index") or 0), str(previous.get("sheet_name") or "")
+
+
 def _build_pipeline_summary(
     *,
     requested_mode: str,
@@ -171,6 +275,8 @@ def _build_pipeline_summary(
         for item in metrics
         if isinstance(item, dict) and str(item.get("as_name") or item.get("col") or "").strip()
     ]
+    sheet_routing = _safe_dict(pipeline.get("sheet_routing")) or {}
+    sheet_sequence = _safe_dict(pipeline.get("sheet_sequence")) or {}
     return {
         "requested_mode": requested_mode,
         "mode": result_mode,
@@ -189,6 +295,15 @@ def _build_pipeline_summary(
         "chart_y": str(chart_payload.get("y") or ""),
         "result_columns": _safe_list_of_str(pipeline.get("result_columns")),
         "result_row_count": int(pipeline.get("result_row_count") or 0),
+        "sheet_switch_reason": str(
+            sheet_sequence.get("last_sheet_switch_reason")
+            or sheet_routing.get("reason")
+            or ""
+        ),
+        "sheet_switched": bool(sheet_sequence.get("switched_from_previous")),
+        "visited_sheets": _safe_list_of_str(
+            [str((item or {}).get("sheet_name") or "") for item in (sheet_sequence.get("visited_sheets") or []) if isinstance(item, dict)]
+        ),
         "status": str(pipeline.get("status") or "ok"),
     }
 
@@ -297,6 +412,10 @@ class ConversationStore:
                     "execution_disclosure": _safe_dict(turn.get("execution_disclosure")),
                 }
             )
+        visited_sheets = _build_visited_sheets(session.turns)
+        recent_sheet_trajectory = _build_recent_sheet_trajectory(session.turns)
+        previous_sheet_index, previous_sheet_name = _previous_sheet_from_trajectory(recent_sheet_trajectory)
+        sheet_reference_hint = _sheet_reference_hint(chat_text)
         payload = {
             "conversation_id": session.conversation_id,
             "turn_count": len(session.turns),
@@ -305,9 +424,18 @@ class ConversationStore:
             "sheet_name": str(session.sheet_name or ""),
             "locale": session.locale,
             "is_followup": _is_followup_question(chat_text) or safe_resolution is not None,
+            "wants_sheet_switch": _is_sheet_switch_followup(chat_text),
+            "wants_previous_sheet": sheet_reference_hint == "previous",
+            "wants_current_sheet": sheet_reference_hint == "current",
+            "sheet_reference_hint": sheet_reference_hint,
             "last_mode": str(last_turn.get("mode") or ""),
             "last_sheet_index": int(last_turn.get("sheet_index") or 0),
             "last_sheet_name": str(last_turn.get("sheet_name") or ""),
+            "previous_sheet_index": previous_sheet_index,
+            "previous_sheet_name": previous_sheet_name,
+            "last_sheet_switch_reason": str(last_turn.get("sheet_switch_reason") or ""),
+            "visited_sheets": visited_sheets,
+            "recent_sheet_trajectory": recent_sheet_trajectory,
             "last_pipeline_summary": _safe_dict(last_turn.get("pipeline_summary")) or {},
             "last_chart_spec": _safe_dict(last_turn.get("chart_spec")),
             "last_result_columns": _safe_list_of_str(last_turn.get("result_columns")),
@@ -346,6 +474,9 @@ def build_turn_summary(
         pipeline=pipeline,
         chart_spec=chart_spec,
     )
+    sheet_routing = (pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}
+    sheet_sequence = (pipeline.get("sheet_sequence") or {}) if isinstance(pipeline.get("sheet_sequence"), dict) else {}
+    sheet_switch_reason = str(sheet_sequence.get("last_sheet_switch_reason") or sheet_routing.get("reason") or "")
     return {
         "question": _truncate_text(question, 300),
         "requested_mode": requested_mode,
@@ -354,6 +485,7 @@ def build_turn_summary(
         "analysis_intent": analysis_intent_payload(planner),
         "sheet_index": int(pipeline.get("source_sheet_index") or ((pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}).get("resolved_sheet_index") or 1),
         "sheet_name": str(pipeline.get("source_sheet_name") or ((pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}).get("resolved_sheet_name") or ""),
+        "sheet_switch_reason": sheet_switch_reason,
         "answer_summary": _truncate_text(analysis_text or answer, 240),
         "pipeline_summary": pipeline_summary,
         "selection_plan": pipeline.get("selection_plan"),

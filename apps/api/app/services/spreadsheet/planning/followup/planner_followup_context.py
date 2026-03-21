@@ -33,6 +33,27 @@ CHART_KEYWORDS = (
     "可视化",
 )
 
+SHEET_SWITCH_KEYWORDS = (
+    "another sheet",
+    "other sheet",
+    "next sheet",
+    "switch sheet",
+    "switch to another sheet",
+    "switch to other sheet",
+    "另一个sheet",
+    "另外一个sheet",
+    "另一个工作表",
+    "另外一个工作表",
+    "换个sheet",
+    "换一个sheet",
+    "再看另一个",
+    "其他sheet",
+    "别的sheet",
+    "別のシート",
+    "他のシート",
+    "別シート",
+)
+
 
 def infer_mode(chat_text: str, requested_mode: str) -> str:
     if requested_mode in {"text", "chart"}:
@@ -449,8 +470,24 @@ def _contextual_followup(chat_text: str, followup_context: dict[str, Any] | None
     return _followup_question(chat_text)
 
 
+def _sheet_switch_followup(chat_text: str, followup_context: dict[str, Any] | None) -> bool:
+    if bool(_interpreted_value(followup_context, "switch_sheet", False)):
+        return True
+    if str(_interpreted_value(followup_context, "sheet_reference", "") or "") in {"another", "previous"}:
+        return True
+    if isinstance(followup_context, dict) and bool(followup_context.get("wants_sheet_switch")):
+        return True
+    if isinstance(followup_context, dict) and str(followup_context.get("sheet_reference_hint") or "") in {"another", "previous"}:
+        return True
+    if not _contextual_followup(chat_text, followup_context):
+        return False
+    return _contains_any(chat_text, SHEET_SWITCH_KEYWORDS)
+
+
 def _preserve_previous_analysis(chat_text: str, followup_context: dict[str, Any] | None) -> bool:
     if bool(_interpreted_value(followup_context, "preserve_previous_analysis", False)):
+        return True
+    if _sheet_switch_followup(chat_text, followup_context):
         return True
     if not _contextual_followup(chat_text, followup_context):
         return False

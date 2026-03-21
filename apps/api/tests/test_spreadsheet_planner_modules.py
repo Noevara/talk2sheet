@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from app.services.spreadsheet.conversation.context_interpreter import FollowupInterpretation, InterpretationResult
+from app.services.spreadsheet.conversation.context_interpreter import (
+    FollowupInterpretation,
+    HeuristicContextInterpreter,
+    InterpretationResult,
+)
 from app.services.spreadsheet.core.schema import ChartSpec, Metric, SelectionPlan, Sort, TransformPlan
 from app.services.spreadsheet.pipeline.column_profile import attach_column_profiles, get_column_profiles
 from app.services.spreadsheet.planning.planner_heuristic import HeuristicPlanner
@@ -317,6 +321,23 @@ def test_followup_context_builds_effective_question_and_preserve_flag() -> None:
     assert _preserve_previous_analysis("改成趋势", followup_context) is False
 
 
+def test_followup_context_preserves_previous_analysis_for_sheet_switch_requests() -> None:
+    switch_followup_context = {
+        "is_followup": True,
+        "wants_sheet_switch": True,
+        "last_mode": "text",
+        "last_turn": {"intent": "trend", "question": "看一下 Sales 的月度趋势"},
+    }
+    interpreted_switch_context = {
+        "is_followup": True,
+        "_interpreted": {"kind": "followup_refine", "switch_sheet": True},
+        "last_turn": {"intent": "trend", "question": "看一下 Sales 的月度趋势"},
+    }
+
+    assert _preserve_previous_analysis("再看另一个 sheet", switch_followup_context) is True
+    assert _preserve_previous_analysis("继续", interpreted_switch_context) is True
+
+
 def test_followup_context_rank_lookup_uses_interpreted_rank() -> None:
     followup_context = {
         "last_turn": {"intent": "ranking"},
@@ -371,6 +392,40 @@ def test_followup_reuse_loads_previous_turn_and_resolves_previous_target() -> No
     assert target[0] == "Category"
     assert target[1] == "A"
     assert target[3] == 1
+
+
+def test_followup_reuse_skips_previous_plan_when_sheet_has_switched() -> None:
+    followup_context = _ranking_followup_context()
+    followup_context.update(
+        {
+            "last_sheet_index": 2,
+            "current_sheet_index": 1,
+        }
+    )
+
+    loaded = _load_previous_structured_turn(followup_context)
+
+    assert loaded is None
+
+
+def test_heuristic_context_interpreter_resolves_previous_sheet_reference() -> None:
+    interpreter = HeuristicContextInterpreter()
+
+    result = interpreter.interpret(
+        _billing_df(),
+        chat_text="回到上一个 sheet 继续",
+        requested_mode="auto",
+        followup_context={
+            "is_followup": True,
+            "sheet_reference_hint": "previous",
+        },
+    )
+
+    assert result.interpretation is not None
+    assert result.interpretation.kind == "followup_switch"
+    assert result.interpretation.switch_sheet is True
+    assert result.interpretation.sheet_reference == "previous"
+    assert result.interpretation.preserve_previous_analysis is True
 
 
 def test_reuse_runtime_context_exposes_candidate_columns_in_priority_order() -> None:

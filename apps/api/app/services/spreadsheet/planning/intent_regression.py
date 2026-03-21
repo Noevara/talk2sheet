@@ -13,13 +13,14 @@ from .planner_types import PlanDraft
 
 
 ROOT = Path(__file__).resolve().parents[6]
-DEFAULT_INTENT_CASES_PATH = ROOT / "apps" / "api" / "tests" / "fixtures" / "intent_regression_cases.v0.2.0.json"
+DEFAULT_INTENT_CASES_PATH = ROOT / "apps" / "api" / "tests" / "fixtures" / "intent_regression_cases.v0.3.0.json"
 
 
 @dataclass(frozen=True)
 class IntentRegressionCase:
     id: str
     category: str
+    scenario: str
     dataset: str
     chat_text: str
     requested_mode: str
@@ -32,6 +33,9 @@ class IntentRegressionCase:
     expected_requested_period: str | None = None
     expected_recent_period_count: int | None = None
     expected_value_filters: list[dict[str, str]] | None = None
+    expected_followup_reused_previous_plan: bool | None = None
+    expected_reuse_strategy: str | None = None
+    followup_context: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +61,7 @@ def load_intent_regression_cases(path: Path) -> list[IntentRegressionCase]:
             IntentRegressionCase(
                 id=str(item.get("id") or "").strip(),
                 category=str(item.get("category") or "").strip(),
+                scenario=str(item.get("scenario") or "").strip() or "single_sheet",
                 dataset=str(item.get("dataset") or "").strip(),
                 chat_text=str(item.get("chat_text") or "").strip(),
                 requested_mode=str(item.get("requested_mode") or "auto").strip() or "auto",
@@ -69,6 +74,9 @@ def load_intent_regression_cases(path: Path) -> list[IntentRegressionCase]:
                 expected_requested_period=_optional_string(item.get("expected_requested_period")),
                 expected_recent_period_count=_optional_int(item.get("expected_recent_period_count")),
                 expected_value_filters=_optional_filter_list(item.get("expected_value_filters")),
+                expected_followup_reused_previous_plan=_optional_bool(item.get("expected_followup_reused_previous_plan")),
+                expected_reuse_strategy=_optional_string(item.get("expected_reuse_strategy")),
+                followup_context=_optional_context(item.get("followup_context")),
             )
         )
     return cases
@@ -84,6 +92,7 @@ def evaluate_intent_regression_case(
         _build_dataset(case.dataset),
         chat_text=case.chat_text,
         requested_mode=case.requested_mode,
+        followup_context=case.followup_context,
     )
     failures: list[str] = []
 
@@ -134,6 +143,18 @@ def evaluate_intent_regression_case(
                 failures.append(
                     f"value_filter missing={expected_filter} actual={actual_filters}"
                 )
+    if case.expected_followup_reused_previous_plan is not None:
+        actual_reused = bool(draft.planner_meta.get("followup_reused_previous_plan"))
+        if actual_reused != bool(case.expected_followup_reused_previous_plan):
+            failures.append(
+                f"followup_reused_previous_plan expected={bool(case.expected_followup_reused_previous_plan)} actual={actual_reused}"
+            )
+    if case.expected_reuse_strategy:
+        actual_strategy = str(draft.planner_meta.get("reuse_strategy") or "")
+        if actual_strategy != case.expected_reuse_strategy:
+            failures.append(
+                f"reuse_strategy expected={case.expected_reuse_strategy} actual={actual_strategy}"
+            )
 
     return IntentRegressionResult(case=case, draft=draft, failures=failures)
 
@@ -152,13 +173,21 @@ def summarize_intent_regression_results(results: list[IntentRegressionResult]) -
     passed = sum(1 for item in results if item.passed)
     failed = total - passed
     categories: dict[str, dict[str, int]] = {}
+    scenarios: dict[str, dict[str, int]] = {}
     for result in results:
         key = result.case.category or "uncategorized"
         bucket = categories.setdefault(key, {"total": 0, "passed": 0})
         bucket["total"] += 1
         if result.passed:
             bucket["passed"] += 1
+        scenario_key = result.case.scenario or "unspecified"
+        scenario_bucket = scenarios.setdefault(scenario_key, {"total": 0, "passed": 0})
+        scenario_bucket["total"] += 1
+        if result.passed:
+            scenario_bucket["passed"] += 1
     for bucket in categories.values():
+        bucket["failed"] = bucket["total"] - bucket["passed"]
+    for bucket in scenarios.values():
         bucket["failed"] = bucket["total"] - bucket["passed"]
     return {
         "total": total,
@@ -166,6 +195,7 @@ def summarize_intent_regression_results(results: list[IntentRegressionResult]) -
         "failed": failed,
         "pass_rate": (passed / total) if total else 0.0,
         "categories": categories,
+        "scenarios": scenarios,
     }
 
 
@@ -178,9 +208,11 @@ def build_intent_regression_failure_snapshot(results: list[IntentRegressionResul
             {
                 "id": result.case.id,
                 "category": result.case.category,
+                "scenario": result.case.scenario,
                 "dataset": result.case.dataset,
                 "chat_text": result.case.chat_text,
                 "requested_mode": result.case.requested_mode,
+                "followup_context": result.case.followup_context or {},
                 "expected": {
                     "intent": result.case.expected_intent,
                     "mode": result.case.expected_mode,
@@ -191,6 +223,8 @@ def build_intent_regression_failure_snapshot(results: list[IntentRegressionResul
                     "requested_period": result.case.expected_requested_period,
                     "recent_period_count": result.case.expected_recent_period_count,
                     "value_filters": result.case.expected_value_filters,
+                    "followup_reused_previous_plan": result.case.expected_followup_reused_previous_plan,
+                    "reuse_strategy": result.case.expected_reuse_strategy,
                 },
                 "actual": {
                     "intent": result.draft.intent,
@@ -271,6 +305,18 @@ def _optional_int(value: Any) -> int | None:
     return None
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
 def _optional_filter_list(value: Any) -> list[dict[str, str]] | None:
     if not isinstance(value, list):
         return None
@@ -284,6 +330,12 @@ def _optional_filter_list(value: Any) -> list[dict[str, str]] | None:
             continue
         output.append({"column": column, "value": filter_value})
     return output or None
+
+
+def _optional_context(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return dict(value)
 
 
 def _normalize_value_filters(value: Any) -> list[dict[str, str]]:

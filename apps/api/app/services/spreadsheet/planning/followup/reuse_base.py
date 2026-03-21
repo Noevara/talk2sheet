@@ -18,6 +18,16 @@ from ..planner_time import (
 )
 
 
+def _same_sheet_followup_context(followup_context: dict[str, Any] | None) -> bool:
+    if not isinstance(followup_context, dict):
+        return True
+    current_sheet_index = int(followup_context.get("current_sheet_index") or 0)
+    last_sheet_index = int(followup_context.get("last_sheet_index") or 0)
+    if current_sheet_index > 0 and last_sheet_index > 0 and current_sheet_index != last_sheet_index:
+        return False
+    return True
+
+
 def _match_question_value(df: Any, column: str, question: str) -> str | None:
     if column not in getattr(df, "columns", []):
         return None
@@ -44,6 +54,8 @@ def _load_previous_structured_turn(
     followup_context: dict[str, Any] | None,
 ) -> tuple[str, SelectionPlan, TransformPlan, ChartSpec | None] | None:
     if not isinstance(followup_context, dict):
+        return None
+    if not _same_sheet_followup_context(followup_context):
         return None
     last_turn = _followup_last_turn(followup_context)
     if not isinstance(last_turn, dict):

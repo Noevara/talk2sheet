@@ -15,5 +15,11 @@ class SheetRoutingDecision(BaseModel):
     reason: str = ""
     matched_by: str = ""
     confidence: float = 0.0
+    boundary_status: Literal["single_sheet_in_scope", "multi_sheet_detected", "multi_sheet_out_of_scope"] = "single_sheet_in_scope"
+    boundary_reason: str = ""
+    decomposition_hint: str = ""
+    mentioned_sheets: list[dict[str, Any]] = Field(default_factory=list)
+    explanation_code: str = ""
+    explanation: str = ""
     clarification: Clarification | None = None
     candidate_scores: list[dict[str, Any]] = Field(default_factory=list)

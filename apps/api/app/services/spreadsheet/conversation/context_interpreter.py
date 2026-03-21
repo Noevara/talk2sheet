@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,8 @@ class FollowupInterpretation(BaseModel):
     time_operator: Literal["=", "contains"] | None = None
     top_k: int | None = None
     value_filters: list[FollowupValueFilter] = Field(default_factory=list)
+    switch_sheet: bool = False
+    sheet_reference: Literal["auto", "current", "previous", "another"] = "auto"
     confidence: float = 0.0
     reasoning: str = ""
 
@@ -76,6 +78,131 @@ class NoopContextInterpreter:
         return InterpretationResult(
             interpretation=None,
             meta={"provider": self.name, "used": False, "reason": "interpreter_disabled"},
+        )
+
+
+_SHEET_REFERENCE_ANOTHER_TOKENS = (
+    "another sheet",
+    "other sheet",
+    "next sheet",
+    "different sheet",
+    "另一个sheet",
+    "另外一个sheet",
+    "另一个工作表",
+    "另外一个工作表",
+    "换个sheet",
+    "换一个sheet",
+    "再看另一个",
+    "别的sheet",
+    "其他sheet",
+    "別のシート",
+    "他のシート",
+    "別シート",
+)
+
+_SHEET_REFERENCE_PREVIOUS_TOKENS = (
+    "previous sheet",
+    "last sheet",
+    "back to previous sheet",
+    "go back to previous sheet",
+    "上一个sheet",
+    "上一张sheet",
+    "上一个工作表",
+    "上一张工作表",
+    "回到上一个sheet",
+    "回到上一个工作表",
+    "前一个sheet",
+    "前一个工作表",
+    "戻って前のシート",
+    "前のシート",
+)
+
+_SHEET_REFERENCE_CURRENT_TOKENS = (
+    "current sheet",
+    "this sheet",
+    "keep current sheet",
+    "当前sheet",
+    "这个sheet",
+    "当前工作表",
+    "这个工作表",
+    "本sheet",
+    "本工作表",
+    "今のシート",
+    "現在のシート",
+)
+
+
+def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    lowered = str(text or "").strip().lower()
+    return any(token in lowered for token in tokens)
+
+
+def _sheet_reference_hint(chat_text: str, followup_context: dict[str, Any] | None) -> Literal["auto", "current", "previous", "another"]:
+    if isinstance(followup_context, dict):
+        explicit_hint = str(followup_context.get("sheet_reference_hint") or "").strip().lower()
+        if explicit_hint in {"current", "previous", "another"}:
+            return cast(Literal["current", "previous", "another"], explicit_hint)
+    text = str(chat_text or "").strip()
+    if not text:
+        return "auto"
+    if _contains_any(text, _SHEET_REFERENCE_PREVIOUS_TOKENS):
+        return "previous"
+    if _contains_any(text, _SHEET_REFERENCE_ANOTHER_TOKENS):
+        return "another"
+    if _contains_any(text, _SHEET_REFERENCE_CURRENT_TOKENS):
+        return "current"
+    return "auto"
+
+
+class HeuristicContextInterpreter:
+    name = "heuristic-followup-v1"
+
+    def interpret(
+        self,
+        df: Any,  # noqa: ARG002
+        *,
+        chat_text: str,
+        requested_mode: str,  # noqa: ARG002
+        followup_context: dict[str, Any] | None = None,
+    ) -> InterpretationResult:
+        if not isinstance(followup_context, dict) or not followup_context:
+            return InterpretationResult(
+                interpretation=None,
+                meta={"provider": self.name, "used": False, "reason": "no_followup_context"},
+            )
+        if not bool(followup_context.get("is_followup")):
+            return InterpretationResult(
+                interpretation=None,
+                meta={"provider": self.name, "used": False, "reason": "not_followup"},
+            )
+
+        sheet_reference = _sheet_reference_hint(chat_text, followup_context)
+        if sheet_reference == "auto":
+            return InterpretationResult(
+                interpretation=None,
+                meta={"provider": self.name, "used": False, "reason": "no_sheet_reference"},
+            )
+
+        switch_sheet = sheet_reference in {"another", "previous"}
+        interpretation = FollowupInterpretation(
+            kind="followup_switch",
+            standalone_question=str(chat_text or "").strip(),
+            requires_previous_context=True,
+            preserve_previous_analysis=True,
+            switch_sheet=switch_sheet,
+            sheet_reference=sheet_reference,
+            confidence=0.82,
+            reasoning="Heuristically resolved sheet pronoun in follow-up context.",
+        )
+        return InterpretationResult(
+            interpretation=interpretation,
+            meta={
+                "provider": self.name,
+                "used": True,
+                "confidence": float(interpretation.confidence or 0.0),
+                "kind": interpretation.kind,
+                "sheet_reference": sheet_reference,
+            },
         )
 
 
@@ -130,10 +257,13 @@ class LLMContextInterpreter:
 def get_default_context_interpreter() -> SpreadsheetContextInterpreter:
     settings = get_settings()
     provider = str(settings.context_interpreter_provider or "auto").strip().lower()
-    if provider in {"", "off", "disabled", "none", "heuristic"}:
+    if provider in {"", "off", "disabled", "none"}:
         return NoopContextInterpreter()
+    if provider in {"heuristic"}:
+        return HeuristicContextInterpreter()
     if provider in {"auto", "openai", "ark"}:
         interpreter = LLMContextInterpreter()
         if getattr(interpreter.client, "enabled", False):
             return interpreter
+        return HeuristicContextInterpreter()
     return NoopContextInterpreter()

@@ -20,7 +20,7 @@ from app.services.spreadsheet.planning.intent_regression import (
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Evaluate planner intent regression cases (v0.2.0 corpus).",
+        description="Evaluate planner intent regression cases (v0.3.0 corpus).",
     )
     parser.add_argument(
         "--cases",
@@ -59,6 +59,17 @@ def _print_human_summary(summary: dict, results: list) -> None:
                 continue
             print(
                 f"  - {category}: "
+                f"{int(stats.get('passed') or 0)}/{int(stats.get('total') or 0)} "
+                f"(failed={int(stats.get('failed') or 0)})"
+            )
+    scenarios = summary.get("scenarios") or {}
+    if isinstance(scenarios, dict) and scenarios:
+        print("Scenario breakdown:")
+        for scenario, stats in sorted(scenarios.items()):
+            if not isinstance(stats, dict):
+                continue
+            print(
+                f"  - {scenario}: "
                 f"{int(stats.get('passed') or 0)}/{int(stats.get('total') or 0)} "
                 f"(failed={int(stats.get('failed') or 0)})"
             )
