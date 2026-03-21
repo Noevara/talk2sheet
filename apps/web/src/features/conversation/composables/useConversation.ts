@@ -40,6 +40,7 @@ export function useConversation(options: {
   ui: ComputedRef<UiMessages>;
 }) {
   const question = ref("");
+  const composerFocusToken = ref(0);
   const chatMessages = ref<ChatMessage[]>([]);
   const conversationId = ref<string | null>(null);
   const chatMode = ref<ChatMode>("auto");
@@ -66,6 +67,16 @@ export function useConversation(options: {
 
   function stopStreaming(): void {
     sseChat.stopStreaming();
+  }
+
+  function applySuggestedFollowup(questionText: string): void {
+    const normalized = String(questionText || "").trim();
+    if (!normalized) {
+      return;
+    }
+    question.value = normalized;
+    composerFocusToken.value += 1;
+    sseChat.errorMessage.value = "";
   }
 
   function resetConversation(): void {
@@ -212,6 +223,7 @@ export function useConversation(options: {
 
   return {
     question,
+    composerFocusToken,
     chatMessages,
     chatBusy: sseChat.chatBusy,
     chatMode,
@@ -221,6 +233,7 @@ export function useConversation(options: {
     snapshotState,
     stopStreaming,
     resetConversation,
+    applySuggestedFollowup,
     submitQuestion,
     handleClarificationSelect,
   };

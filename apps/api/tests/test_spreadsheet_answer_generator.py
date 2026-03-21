@@ -61,7 +61,10 @@ def test_rule_answer_generator_summarizes_ranking_result() -> None:
     assert "Top 2" in result.analysis_text
     assert "bar chart" in result.analysis_text
     assert result.meta["summary_kind"] == "ranking"
+    assert result.meta["summary_source"] == "rule_based_ranking_summary"
     assert result.meta["analysis_intent"]["kind"] == "ranking"
+    assert result.segments["conclusion"] == result.answer
+    assert "Top 2" in result.segments["evidence"]
 
 
 def test_rule_answer_generator_prefers_structured_intent_kind_over_legacy_string() -> None:
@@ -109,6 +112,9 @@ def test_rule_answer_generator_summarizes_trend_result() -> None:
     assert "2025-03" in result.analysis_text
     assert "up 10" in result.analysis_text
     assert result.meta["summary_kind"] == "trend"
+    assert result.meta["summary_source"] == "rule_based_trend_summary"
+    assert result.segments["conclusion"] == result.answer
+    assert "latest point is 2025-03 at 20" in result.segments["evidence"]
 
 
 def test_rule_answer_generator_summarizes_period_breakdown_result() -> None:
@@ -333,6 +339,8 @@ def test_rule_answer_generator_summarizes_period_compare_result() -> None:
                     "current_period": "2025-02",
                     "previous_period": "2025-01",
                     "compare_metric_column": "Amount",
+                    "compare_basis": "previous_period",
+                    "comparison_type": "mom",
                 },
             ),
             result_df=pd.DataFrame({"2025-01": [40.0], "2025-02": [60.0], "change_value": [20.0], "change_pct": [0.5]}),
@@ -353,6 +361,137 @@ def test_rule_answer_generator_summarizes_period_compare_result() -> None:
     assert "50.0%" in result.answer
     assert "2025-01=40" in result.analysis_text
     assert result.meta["summary_kind"] == "period_compare"
+    assert result.meta["summary_source"] == "rule_based_period_compare_summary"
+    assert result.meta["comparison_type"] == "mom"
+    assert result.meta["compare_basis"] == "previous_period"
+    assert result.segments["conclusion"] == result.answer
+    assert "精确对比" in result.segments["evidence"]
+
+
+def test_rule_answer_generator_summarizes_period_compare_ratio_result() -> None:
+    result = RuleBasedAnswerGenerator().generate(
+        AnswerGeneratorContext(
+            locale="en",
+            draft=PlanDraft(
+                mode="text",
+                intent="period_compare",
+                selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+                transform_plan=TransformPlan(
+                    derived_columns=[],
+                    groupby=["month"],
+                    metrics=[Metric(agg="sum", col="Amount", as_name="value")],
+                    pivot=PivotSpec(index=[], columns="month", values="value"),
+                    post_pivot_formula_metrics=[
+                        FormulaMetric(as_name="change_value", op="sub", left="2025-02", right="2024-02"),
+                        FormulaMetric(as_name="change_pct", op="div", left="change_value", right="2024-02"),
+                        FormulaMetric(as_name="compare_ratio", op="div", left="2025-02", right="2024-02"),
+                    ],
+                ),
+                planner_meta={
+                    "current_period": "2025-02",
+                    "previous_period": "2024-02",
+                    "compare_metric_column": "Amount",
+                    "compare_basis": "year_over_year",
+                    "comparison_type": "ratio",
+                },
+            ),
+            result_df=pd.DataFrame(
+                {
+                    "2024-02": [45.0],
+                    "2025-02": [60.0],
+                    "change_value": [15.0],
+                    "change_pct": [0.3333],
+                    "compare_ratio": [1.3333],
+                }
+            ),
+            selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+            transform_plan=TransformPlan(
+                groupby=["month"],
+                metrics=[Metric(agg="sum", col="Amount", as_name="value")],
+                pivot=PivotSpec(index=[], columns="month", values="value"),
+            ),
+        )
+    )
+
+    assert "1.333x" in result.answer
+    assert result.meta["comparison_type"] == "ratio"
+    assert result.meta["compare_basis"] == "year_over_year"
+
+
+def test_rule_answer_generator_adds_ranking_risk_note_for_single_item() -> None:
+    result = RuleBasedAnswerGenerator().generate(
+        AnswerGeneratorContext(
+            locale="en",
+            draft=PlanDraft(
+                mode="text",
+                intent="ranking",
+                selection_plan=SelectionPlan(columns=["Category", "Amount"]),
+                transform_plan=TransformPlan(groupby=["Category"], metrics=[Metric(agg="sum", col="Amount", as_name="value")], top_k=3),
+            ),
+            result_df=pd.DataFrame({"Category": ["A"], "value": [180.0]}),
+            selection_plan=SelectionPlan(columns=["Category", "Amount"]),
+            transform_plan=TransformPlan(groupby=["Category"], metrics=[Metric(agg="sum", col="Amount", as_name="value")], top_k=3),
+        )
+    )
+
+    assert result.meta["summary_kind"] == "ranking"
+    assert "Only one Category item matched" in result.segments["risk_note"]
+
+
+def test_rule_answer_generator_adds_trend_risk_note_for_short_series() -> None:
+    result = RuleBasedAnswerGenerator().generate(
+        AnswerGeneratorContext(
+            locale="en",
+            draft=PlanDraft(
+                mode="text",
+                intent="trend",
+                selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+                transform_plan=TransformPlan(groupby=["Month"], metrics=[Metric(agg="sum", col="Amount", as_name="value")], order_by=Sort(col="Month", dir="asc")),
+            ),
+            result_df=pd.DataFrame({"Month": ["2025-01", "2025-02"], "value": [100.0, 120.0]}),
+            selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+            transform_plan=TransformPlan(groupby=["Month"], metrics=[Metric(agg="sum", col="Amount", as_name="value")], order_by=Sort(col="Month", dir="asc")),
+        )
+    )
+
+    assert result.meta["summary_kind"] == "trend"
+    assert "based on 2 periods only" in result.segments["risk_note"]
+
+
+def test_rule_answer_generator_adds_period_compare_risk_note_for_zero_base() -> None:
+    result = RuleBasedAnswerGenerator().generate(
+        AnswerGeneratorContext(
+            locale="en",
+            draft=PlanDraft(
+                mode="text",
+                intent="period_compare",
+                selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+                transform_plan=TransformPlan(
+                    groupby=["month"],
+                    metrics=[Metric(agg="sum", col="Amount", as_name="value")],
+                    pivot=PivotSpec(index=[], columns="month", values="value"),
+                ),
+                planner_meta={
+                    "current_period": "2025-02",
+                    "previous_period": "2025-01",
+                    "compare_metric_column": "Amount",
+                    "compare_basis": "previous_period",
+                    "comparison_type": "ratio",
+                },
+            ),
+            result_df=pd.DataFrame({"2025-01": [0.0], "2025-02": [60.0], "change_value": [60.0], "change_pct": [None], "compare_ratio": [None]}),
+            selection_plan=SelectionPlan(columns=["Month", "Amount"]),
+            transform_plan=TransformPlan(
+                groupby=["month"],
+                metrics=[Metric(agg="sum", col="Amount", as_name="value")],
+                pivot=PivotSpec(index=[], columns="month", values="value"),
+            ),
+        )
+    )
+
+    assert result.meta["summary_kind"] == "period_compare"
+    assert result.meta["zero_base"] is True
+    assert "base period 2025-01 is 0" in result.segments["risk_note"]
 
 
 def test_rule_answer_generator_summarizes_explain_breakdown_result() -> None:
@@ -432,6 +571,44 @@ def test_rule_answer_generator_enriches_explain_ranked_item_summary() -> None:
     assert "时间范围覆盖 2025-01-03 到 2025-02-03" in result.analysis_text
     assert "按 Region 看，cn-sh 贡献最高" in result.analysis_text
     assert result.meta["summary_kind"] == "explain_item"
+
+
+def test_rule_answer_generator_returns_detail_summary_segments_and_sources() -> None:
+    result = RuleBasedAnswerGenerator().generate(
+        AnswerGeneratorContext(
+            locale="en",
+            draft=PlanDraft(
+                mode="text",
+                intent="detail_rows",
+                selection_plan=SelectionPlan(columns=["Transaction ID", "Amount"], sort=Sort(col="Amount", dir="desc"), limit=2),
+                transform_plan=TransformPlan(return_rows=True),
+            ),
+            result_df=pd.DataFrame(
+                {
+                    "Transaction ID": ["T-003", "T-001"],
+                    "Amount": [120.0, 100.0],
+                }
+            ),
+            selection_plan=SelectionPlan(columns=["Transaction ID", "Amount"], sort=Sort(col="Amount", dir="desc"), limit=2),
+            transform_plan=TransformPlan(return_rows=True),
+            execution_disclosure=ExecutionDisclosure(
+                data_scope="sampled_first_n",
+                exact_used=False,
+                scope_text="Using the first 100 rows only.",
+                fallback_reason="Exact execution was unavailable.",
+                max_rows=100,
+            ),
+        )
+    )
+
+    assert result.meta["summary_kind"] == "detail"
+    assert result.meta["summary_source"] == "rule_based_detail_summary"
+    assert result.meta["detail_source"] == "result_df_rows"
+    assert result.meta["detail_row_count"] == 2
+    assert result.meta["detail_columns"] == ["Transaction ID", "Amount"]
+    assert result.segments["conclusion"] == "Returned 2 detail rows sorted by Amount."
+    assert "First row: Transaction ID=T-003, Amount=120." in result.segments["evidence"]
+    assert "Using the first 100 rows only." in result.segments["risk_note"]
 
 
 def test_rule_answer_generator_summarizes_what_if_reduction_result() -> None:
@@ -566,6 +743,21 @@ class _FailingAnswerClient:
         raise OpenAICompatibleError("answer generation failed")
 
 
+class _EchoAnswerClient:
+    def __init__(self) -> None:
+        self.enabled = True
+        self.model = "fake-answer-model"
+        self.base_url = "https://example.test/v1"
+
+    def generate_json(self, schema_model, *, system_prompt: str, user_prompt: str):
+        return schema_model(
+            conclusion="A leads with 180.",
+            evidence="A leads with 180.",
+            risk_note="A leads with 180.",
+            key_points=[],
+        )
+
+
 def test_llm_answer_generator_uses_openai_compatible_json(monkeypatch) -> None:
     import app.services.spreadsheet.conversation.answer_generator as answer_module
 
@@ -585,6 +777,20 @@ def test_llm_answer_generator_uses_openai_compatible_json(monkeypatch) -> None:
     assert "reference_conclusion=A ranks first at 180." in fake_client.calls[0]["user_prompt"]
     assert "execution_disclosure=None" in fake_client.calls[0]["user_prompt"]
     assert "result_preview_csv=" in fake_client.calls[0]["user_prompt"]
+
+
+def test_llm_answer_generator_uses_baseline_segments_when_llm_segments_repeat(monkeypatch) -> None:
+    import app.services.spreadsheet.conversation.answer_generator as answer_module
+
+    monkeypatch.setattr(answer_module, "build_default_llm_client", lambda: _EchoAnswerClient())
+
+    generator = LLMAnswerGenerator(provider_kind="openai")
+    result = generator.generate(_ranking_context())
+
+    assert result.answer == "A leads with 180."
+    assert result.segments["evidence"] != result.segments["conclusion"]
+    assert "Top 2" in result.segments["evidence"]
+    assert result.segments["risk_note"] == ""
 
 
 def test_llm_answer_generator_falls_back_to_rule_on_error(monkeypatch) -> None:

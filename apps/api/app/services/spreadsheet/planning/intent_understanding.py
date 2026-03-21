@@ -9,14 +9,17 @@ from .intent_models import AnalysisIntent, AnalysisTimeScope
 from .planner_intent_signals import (
     _average_amount_question,
     _compare_question,
+    _delta_compare,
     _distinct_question,
     _forecast_question,
     _ranking_question,
+    _ratio_compare,
     _row_count_question,
     _share_question,
     _total_amount_question,
     _trend_question,
     _weekday_weekend_question,
+    _year_over_year_compare,
 )
 from .planner_types import ResolvedColumns
 
@@ -230,11 +233,12 @@ def _infer_target_dimension(
 
 
 def _infer_comparison_type(kind: str) -> str | None:
+    if kind == "period_compare":
+        return None
     mapping = {
         "ranking": "ranking",
         "share": "share",
         "trend": "trend",
-        "period_compare": "period_compare",
         "period_breakdown": "period_breakdown",
         "weekpart_compare": "period_compare",
         "forecast_timeseries": "forecast",
@@ -248,6 +252,25 @@ def _infer_comparison_type(kind: str) -> str | None:
     return mapping.get(kind)
 
 
+def _infer_period_compare_type(*, question: str, draft: Any | None = None) -> str:
+    if draft is not None:
+        planner_meta = dict(getattr(draft, "planner_meta", {}) or {})
+        from_meta = str(planner_meta.get("comparison_type") or "").strip()
+        if from_meta in {"mom", "yoy", "delta", "ratio"}:
+            return from_meta
+        compare_basis = str(planner_meta.get("compare_basis") or "").strip()
+        if compare_basis == "year_over_year":
+            return "yoy"
+
+    if _ratio_compare(question):
+        return "ratio"
+    if _delta_compare(question):
+        return "delta"
+    if _year_over_year_compare(question):
+        return "yoy"
+    return "mom"
+
+
 def _infer_time_scope(
     *,
     question: str,
@@ -257,12 +280,24 @@ def _infer_time_scope(
     grain: str | None = None
     requested_period = ""
     requested_periods: list[str] = []
+    base_period = ""
+    compare_window: list[str] = []
 
     if draft is not None:
         planner_meta = dict(getattr(draft, "planner_meta", {}) or {})
         requested_period = str(planner_meta.get("requested_period") or planner_meta.get("forecast_target_period") or "")
         raw_requested_periods = planner_meta.get("requested_months") or planner_meta.get("forecast_target_periods") or []
         requested_periods = [str(item) for item in raw_requested_periods if str(item or "").strip()]
+        base_period = str(planner_meta.get("previous_period") or planner_meta.get("base_period") or "")
+        if not requested_period:
+            requested_period = str(planner_meta.get("current_period") or "")
+        if not requested_periods and requested_period and base_period:
+            requested_periods = [base_period, requested_period]
+        raw_compare_window = planner_meta.get("compare_window") or []
+        if isinstance(raw_compare_window, list):
+            compare_window = [str(item) for item in raw_compare_window if str(item or "").strip()]
+        if not compare_window and requested_period and base_period:
+            compare_window = [base_period, requested_period]
 
         transform_plan = getattr(draft, "transform_plan", None)
         derived_columns = list(getattr(transform_plan, "derived_columns", []) or [])
@@ -277,13 +312,22 @@ def _infer_time_scope(
         if _trend_question(question) or _compare_question(question) or _forecast_question(question):
             grain = "month"
 
-    if grain is None and not requested_period and not requested_periods and not isinstance(followup_context, dict):
+    if (
+        grain is None
+        and not requested_period
+        and not requested_periods
+        and not base_period
+        and not compare_window
+        and not isinstance(followup_context, dict)
+    ):
         return None
 
     return AnalysisTimeScope(
         grain=grain,
         requested_period=requested_period or None,
         requested_periods=requested_periods,
+        base_period=base_period or None,
+        compare_window=compare_window,
         is_followup=bool((followup_context or {}).get("is_followup")) if isinstance(followup_context, dict) else False,
     )
 
@@ -332,13 +376,14 @@ def understand_analysis_intent(
         followup_context=followup_context,
     )
     kind = _infer_kind(question, draft=draft)
+    comparison_type = _infer_period_compare_type(question=question, draft=draft) if kind == "period_compare" else _infer_comparison_type(kind)
 
     return AnalysisIntent(
         kind=kind,
         legacy_intent=str(getattr(draft, "intent", "") or kind),
         target_metric=_infer_target_metric(kind=kind, question=question, amount_column=columns.amount_column, draft=draft),
         target_dimension=_infer_target_dimension(kind=kind, columns=columns, draft=draft),
-        comparison_type=_infer_comparison_type(kind),
+        comparison_type=comparison_type,
         time_scope=_infer_time_scope(question=question, followup_context=followup_context, draft=draft),
         answer_expectation=_infer_answer_expectation(kind=kind, mode=mode, draft=draft, clarification=clarification),
         clarification=clarification,

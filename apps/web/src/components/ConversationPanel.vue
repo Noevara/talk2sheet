@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   clarificationSelect: [payload: { messageId: string; value: string }];
+  followupSelect: [question: string];
 }>();
 
 const viewport = ref<HTMLElement | null>(null);
@@ -41,6 +42,7 @@ watch(
       :show-debug="false"
       :ui="props.ui"
       @clarification-select="emit('clarificationSelect', { messageId: message.id, value: $event })"
+      @followup-select="emit('followupSelect', $event)"
     />
   </div>
 </template>

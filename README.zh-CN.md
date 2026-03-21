@@ -4,6 +4,8 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 它的核心目标是：用户围绕表格数据提出自然语言问题，系统在 workbook 内定位合适的目标 sheet，将问题翻译成可执行的分析计划，用 pandas 执行分析，再把答案和执行链路一起返回给前端。
 
+当前稳定版本：`v0.2.0`。
+
 ## 当前范围
 
 当前版本聚焦：
@@ -20,13 +22,19 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 - 文件上传、sheet 列表、表格预览
 - workbook 内单个目标 sheet 的自动路由
 - 总行数、总量、均值、去重计数
+- 周期对比：环比 / 同比、差值、倍数占比
 - Top N / 排名
+- 条件筛选 + 分组聚合 + Top N 组合问题
 - 明细行返回
-- 趋势分析和基础图表
+- 明细 + 总结的结构化回答卡（结论 / 依据 / 风险提示）
+- 支持日 / 周 / 月粒度的趋势分析
+- 图表类型推荐、图表元信息展示，以及无法出图时的文本降级提示
 - 轻量时间序列预测
 - `auto / text / chart` 模式切换
 - 用户可见的分析链路、sheet 路由摘要和结构化回答
 - 字段/工作表澄清卡片（区分类型），选择后自动用自然确认语继续原问题分析
+- 结果卡“继续问”建议，点击后自动回填输入框并可编辑发送
+- intent 回归语料与离线评测（已接入 CI 分层）
 
 当前暂不支持：
 
@@ -52,6 +60,7 @@ packages/contracts/  生成的 OpenAPI 契约产物
 - 日文：[README.ja.md](./README.ja.md)
 - 架构文档：[docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)
 - 版本说明：[CHANGELOG.md](./CHANGELOG.md)
+- 最新发布说明：[docs/releases/v0.2.0.md](./docs/releases/v0.2.0.md)
 
 ## 使用方式
 
@@ -164,6 +173,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 校验命令：
 
 - API: `pytest -q apps/api`
+- Intent 回归: `python apps/api/scripts/eval_intent_cases.py`
 - Web: `cd apps/web && npm run ci`
 - 全量: `make ci-check`
 

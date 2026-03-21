@@ -55,3 +55,4 @@ class ChartStageResult:
     chart_validation: list[dict[str, Any]]
     chart_repair_meta: dict[str, Any]
     chart_data: list[dict[str, Any]] | None
+    chart_context: dict[str, Any]

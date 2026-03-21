@@ -39,6 +39,9 @@ from app.services.spreadsheet.planning.planner_runtime import (
 from app.services.spreadsheet.planning.planner_text_utils import _extract_top_k
 from app.services.spreadsheet.planning.planner_time import (
     _build_month_range_filters,
+    _extract_recent_period_count,
+    _extract_time_grain,
+    _resolve_recent_period_buckets,
     _resolve_requested_month_buckets,
     _resolve_requested_single_month_bucket,
 )
@@ -73,6 +76,18 @@ def _monthly_df() -> pd.DataFrame:
                 "Date": ["2025-01-03", "2025-02-04", "2025-03-06"],
                 "Amount": [100.0, 120.0, 140.0],
                 "Category": ["A", "B", "A"],
+            }
+        )
+    )
+
+
+def _monthly_compare_df() -> pd.DataFrame:
+    return attach_column_profiles(
+        pd.DataFrame(
+            {
+                "Date": ["2024-02-03", "2025-01-04", "2025-02-06"],
+                "Amount": [90.0, 120.0, 140.0],
+                "Category": ["A", "A", "A"],
             }
         )
     )
@@ -126,6 +141,21 @@ def test_planner_time_resolves_single_and_multiple_month_buckets() -> None:
 
     assert _resolve_requested_single_month_bucket(df, date_column="Date", chat_text="看一下2月总金额") == "2025-02"
     assert _resolve_requested_month_buckets(df, date_column="Date", chat_text="看一下1月和3月分别多少") == ["2025-01", "2025-03"]
+    assert _resolve_requested_single_month_bucket(df, date_column="Date", chat_text="看上个月趋势") == "2025-02"
+    assert _resolve_requested_single_month_bucket(df, date_column="Date", chat_text="看本月趋势") == "2025-03"
+
+
+def test_planner_time_extracts_recent_period_count_and_grain() -> None:
+    assert _extract_time_grain("最近7天趋势", default="month") == "day"
+    assert _extract_recent_period_count("最近7天趋势", grain="day") == 7
+    assert _extract_time_grain("按周看最近4周趋势", default="month") == "week"
+    assert _extract_recent_period_count("按周看最近4周趋势", grain="week") == 4
+    assert _extract_time_grain("近三个月趋势", default="month") == "month"
+    assert _extract_recent_period_count("近三个月趋势", grain="month") == 3
+
+
+def test_planner_time_resolves_recent_period_bucket_window() -> None:
+    assert _resolve_recent_period_buckets(_monthly_df(), date_column="Date", grain="month", count=2) == ["2025-02", "2025-03"]
 
 
 def test_planner_time_builds_month_range_filters() -> None:
@@ -454,6 +484,92 @@ def test_heuristic_actions_build_forecast_plan_returns_timeseries_plan() -> None
     assert draft.planner_meta["forecast_target_period"] == "2025-04"
 
 
+def test_heuristic_planner_builds_direct_period_compare_plan() -> None:
+    draft = HeuristicPlanner().plan(
+        _monthly_df(),
+        chat_text="和上个月对比差值",
+        requested_mode="auto",
+    )
+
+    assert draft.intent == "period_compare"
+    assert draft.planner_meta["compare_basis"] == "previous_period"
+    assert draft.planner_meta["comparison_type"] == "delta"
+    assert draft.planner_meta["current_period"] == "2025-03"
+    assert draft.planner_meta["previous_period"] == "2025-02"
+    assert draft.transform_plan.pivot is not None
+    assert [metric.as_name for metric in draft.transform_plan.post_pivot_formula_metrics] == ["change_value", "change_pct"]
+    assert draft.analysis_intent is not None
+    assert draft.analysis_intent.comparison_type == "delta"
+    assert draft.analysis_intent.time_scope is not None
+    assert draft.analysis_intent.time_scope.base_period == "2025-02"
+    assert draft.analysis_intent.time_scope.compare_window == ["2025-02", "2025-03"]
+
+
+def test_heuristic_planner_builds_year_over_year_ratio_compare_plan() -> None:
+    draft = HeuristicPlanner().plan(
+        _monthly_compare_df(),
+        chat_text="同比占比是多少",
+        requested_mode="auto",
+    )
+
+    assert draft.intent == "period_compare"
+    assert draft.planner_meta["compare_basis"] == "year_over_year"
+    assert draft.planner_meta["comparison_type"] == "ratio"
+    assert draft.planner_meta["current_period"] == "2025-02"
+    assert draft.planner_meta["previous_period"] == "2024-02"
+    assert [metric.as_name for metric in draft.transform_plan.post_pivot_formula_metrics] == [
+        "change_value",
+        "change_pct",
+        "compare_ratio",
+    ]
+    assert draft.analysis_intent is not None
+    assert draft.analysis_intent.comparison_type == "ratio"
+
+
+def test_heuristic_planner_applies_direct_value_filters_for_ranking() -> None:
+    draft = HeuristicPlanner().plan(
+        _billing_df(),
+        chat_text="只看 cn-sh，按服务统计费用前2",
+        requested_mode="auto",
+    )
+
+    assert draft.intent == "ranking"
+    assert draft.selection_plan.filters
+    assert [(flt.col, flt.op, flt.value) for flt in draft.selection_plan.filters] == [("Region", "=", "cn-sh")]
+    assert draft.transform_plan.top_k == 2
+    assert draft.planner_meta["value_filters"] == [{"column": "Region", "value": "cn-sh"}]
+
+
+def test_heuristic_planner_applies_day_grain_with_relative_month_filter() -> None:
+    draft = HeuristicPlanner().plan(
+        _monthly_df(),
+        chat_text="按天看上月趋势",
+        requested_mode="auto",
+    )
+
+    assert draft.intent == "trend"
+    assert draft.transform_plan.derived_columns[0].grain == "day"
+    assert draft.selection_plan.filters
+    assert [(flt.col, flt.op, flt.value) for flt in draft.selection_plan.filters] == [
+        ("Date", ">=", "2025-02-01"),
+        ("Date", "<", "2025-03-01"),
+    ]
+    assert draft.planner_meta["requested_period"] == "2025-02"
+
+
+def test_heuristic_planner_applies_recent_period_window_for_trend() -> None:
+    draft = HeuristicPlanner().plan(
+        _monthly_df(),
+        chat_text="看最近2个月趋势",
+        requested_mode="auto",
+    )
+
+    assert draft.intent == "trend"
+    assert draft.transform_plan.having
+    assert [(flt.col, flt.op, flt.value) for flt in draft.transform_plan.having] == [("month_bucket", "in", ["2025-02", "2025-03"])]
+    assert draft.planner_meta["requested_recent_period_count"] == 2
+
+
 def test_heuristic_actions_build_ranking_and_share_plans() -> None:
     df = _billing_df()
     profiles = get_column_profiles(df)
@@ -483,6 +599,9 @@ def test_heuristic_actions_build_ranking_and_share_plans() -> None:
     assert ranking.intent == "ranking"
     assert ranking.chart_spec is not None
     assert ranking.chart_spec.x == "Service Name"
+    assert ranking.planner_meta["chart_context"]["x_label"] == "Service Name"
+    assert ranking.planner_meta["chart_context"]["y_label"] == "value"
+    assert ranking.planner_meta["chart_context"]["y_unit"] == "amount"
 
     share = try_build_heuristic_action(
         df,
@@ -509,3 +628,68 @@ def test_heuristic_actions_build_ranking_and_share_plans() -> None:
     assert share.intent == "share"
     assert share.chart_spec is not None
     assert share.chart_spec.type == "pie"
+    assert share.planner_meta["chart_context"]["recommended_type"] == "pie"
+    assert share.planner_meta["chart_context"]["y_unit"] == "amount"
+
+
+def test_heuristic_actions_recommend_bar_for_large_share_slice_count() -> None:
+    df = _billing_df()
+    profiles = get_column_profiles(df)
+
+    share = try_build_heuristic_action(
+        df,
+        chat_text="看一下前12个服务费用占比",
+        runtime_context=HeuristicActionRuntimeContext(
+            effective_chat_text="看一下前12个服务费用占比",
+            mode="chart",
+            followup_context=None,
+            preserve_previous_analysis=False,
+            profiles=profiles,
+            planner_meta={},
+            amount_column="应付金额",
+            date_column="账单日期",
+            category_column="Billing Item Name",
+            single_transaction_column="Transaction ID",
+            item_preferred_column="Billing Item Name",
+            item_column="Billing Item Name",
+            question_dimension_column="Service Name",
+        ),
+        plan_draft_factory=PlanDraft,
+    )
+
+    assert share is not None
+    assert share.intent == "share"
+    assert share.chart_spec is not None
+    assert share.chart_spec.type == "bar"
+    assert share.planner_meta["chart_context"]["recommended_type"] == "bar"
+
+
+def test_heuristic_actions_set_metric_unit_for_trend_chart_context() -> None:
+    df = _monthly_df()
+    profiles = get_column_profiles(df)
+
+    trend = try_build_heuristic_action(
+        df,
+        chat_text="看最近两个月趋势图",
+        runtime_context=HeuristicActionRuntimeContext(
+            effective_chat_text="看最近两个月趋势图",
+            mode="chart",
+            followup_context=None,
+            preserve_previous_analysis=False,
+            profiles=profiles,
+            planner_meta={},
+            amount_column="Amount",
+            date_column="Date",
+            category_column="Category",
+            single_transaction_column=None,
+            item_preferred_column=None,
+            item_column="Category",
+            question_dimension_column="Category",
+        ),
+        plan_draft_factory=PlanDraft,
+    )
+
+    assert trend is not None
+    assert trend.intent == "trend"
+    assert trend.chart_spec is not None
+    assert trend.planner_meta["chart_context"]["y_unit"] == "amount"

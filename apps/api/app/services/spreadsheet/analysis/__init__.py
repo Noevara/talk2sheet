@@ -219,16 +219,24 @@ def analyze(
     chart_stage = run_chart_stage(execution_stage.result_df, draft, chat_text=chat_text)
     record_stage("chart_ms", chart_started_at)
 
+    execution_stage.transform_meta = {
+        **execution_stage.transform_meta,
+        **({"chart_runtime": chart_stage.chart_context} if chart_stage.chart_context else {}),
+    }
+
+    fallback_reasons: list[str] = [
+        *[str(item) for item in (execution_stage.exact_support.get("reasons") or [])],
+        *([str(execution_stage.exact_support.get("fallback_reason"))] if execution_stage.exact_support.get("fallback_reason") else []),
+    ]
+    if draft.mode == "chart" and chart_stage.chart_spec is None:
+        chart_reason = str(chart_stage.chart_context.get("fallback_reason") or "chart rendering failed")
+        fallback_reasons.append(t(locale, "chart_unavailable", reason=chart_reason))
+
     execution_disclosure = build_execution_disclosure(
         locale,
         rows_loaded=rows_loaded,
         exact_used=execution_stage.exact_used,
-        fallback_reason=", ".join(
-            [
-                *[str(item) for item in (execution_stage.exact_support.get("reasons") or [])],
-                *([str(execution_stage.exact_support.get("fallback_reason"))] if execution_stage.exact_support.get("fallback_reason") else []),
-            ]
-        ),
+        fallback_reason=", ".join([reason for reason in fallback_reasons if reason]),
     )
 
     answer_started_at = perf_counter()

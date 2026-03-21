@@ -42,6 +42,7 @@ class LLMAnswerGenerator:
             "`conclusion` must be one concise sentence with the main finding only. "
             "`evidence` must be one or two concise sentences explaining the basis in the executed result. "
             "`risk_note` must be one concise sentence only when a caveat, sampled scope, fallback, or ambiguity matters; otherwise return an empty string. "
+            "For ranking/trend/period_compare questions, keep the wording reusable for reporting: finding first, basis second, caveat optional. "
             "No markdown, no bullet points, no code fences. "
             "Use the requested locale language exactly. "
             "If no chart_spec is provided, do not mention a chart. "
@@ -73,6 +74,7 @@ class LLMAnswerGenerator:
             f"reference_conclusion={baseline_segments.get('conclusion') or baseline.answer}\n"
             f"reference_evidence={baseline_segments.get('evidence') or baseline.analysis_text}\n"
             f"reference_risk_note={baseline_segments.get('risk_note') or ''}\n"
+            "segment_policy=conclusion(1 sentence) | evidence(1-2 sentences) | risk_note(0-1 sentence)\n"
             f"rule_based_meta={baseline.meta}\n"
             "Write a user-facing answer grounded in the executed result."
         )
@@ -100,9 +102,14 @@ class LLMAnswerGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
             )
+            baseline_segments = baseline.segments or {}
             conclusion = _normalize_segment(payload.conclusion)
             evidence = _normalize_segment(payload.evidence)
+            if evidence == conclusion:
+                evidence = _normalize_segment(baseline_segments.get("evidence") or baseline.analysis_text)
             risk_note = _normalize_segment(payload.risk_note) or baseline.segments.get("risk_note", "")
+            if risk_note and risk_note in {conclusion, evidence}:
+                risk_note = _normalize_segment(baseline.segments.get("risk_note", ""))
             if not conclusion or not evidence:
                 raise OpenAICompatibleError("LLM answer payload was empty.")
             return _finalize_generated_answer(

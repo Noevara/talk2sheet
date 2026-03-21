@@ -7,6 +7,7 @@ import pandas as pd
 
 from ..core.i18n import t
 from ..core.schema import ChartSpec, SelectionPlan, TransformPlan
+from ..pipeline.column_profile import get_column_profiles
 from ..execution.exact_executor import (
     execute_exact_plan,
     execute_exact_plan_from_source,
@@ -27,6 +28,42 @@ from .types import (
     TransformStageResult,
 )
 from .utils import has_error
+
+
+def _infer_chart_unit(column: str, result_df: pd.DataFrame) -> str:
+    raw = str(column or "")
+    normalized = raw.lower()
+    profiles = get_column_profiles(result_df)
+    profile = profiles.get(raw) or {}
+    hints = [str(item) for item in (profile.get("semantic_hints") or [])]
+    if "%" in raw or "％" in raw or "percent" in normalized:
+        return "%"
+    if any(token in raw for token in ("元", "万元", "亿元", "¥", "￥")):
+        return "CNY"
+    if any(token in normalized for token in ("usd", "$")):
+        return "USD"
+    if any(token in normalized for token in ("cny", "rmb")):
+        return "CNY"
+    if "amount" in hints:
+        return "amount"
+    if str(profile.get("semantic_type") or "") == "numeric":
+        return "value"
+    return ""
+
+
+def _chart_fallback_reason(issues: list[dict[str, Any]]) -> str:
+    errors = [str(item.get("message") or "").strip() for item in issues if str(item.get("severity") or "error") == "error"]
+    if errors:
+        return errors[0]
+    return "chart validation failed"
+
+
+def _planner_chart_context(draft: Any) -> dict[str, Any]:
+    planner_meta = getattr(draft, "planner_meta", None)
+    if not isinstance(planner_meta, dict):
+        return {}
+    chart_context = planner_meta.get("chart_context")
+    return chart_context if isinstance(chart_context, dict) else {}
 
 
 def run_selection_stage(df: pd.DataFrame, draft: Any, *, chat_text: str) -> SelectionStageResult:
@@ -186,10 +223,12 @@ def run_forecast_stage(
 
 def run_chart_stage(result_df: pd.DataFrame, draft: Any, *, chat_text: str) -> ChartStageResult:
     chart_spec: ChartSpec | None = draft.chart_spec if draft.mode == "chart" and draft.chart_spec else None
+    planner_chart_context = _planner_chart_context(draft)
     chart_guardrail_meta: dict[str, Any] = {"changes": []}
     chart_validation: list[dict[str, Any]] = []
     chart_repair_meta: dict[str, Any] = {"changes": []}
     chart_data: list[dict[str, Any]] | None = None
+    chart_context: dict[str, Any] = {}
 
     if chart_spec is None:
         return ChartStageResult(
@@ -198,6 +237,7 @@ def run_chart_stage(result_df: pd.DataFrame, draft: Any, *, chat_text: str) -> C
             chart_validation=chart_validation,
             chart_repair_meta=chart_repair_meta,
             chart_data=None,
+            chart_context=chart_context,
         )
 
     governance = govern_plan(
@@ -218,7 +258,29 @@ def run_chart_stage(result_df: pd.DataFrame, draft: Any, *, chat_text: str) -> C
 
         chart_limit = chart_spec.top_k if chart_spec.top_k is not None else len(result_df.index)
         chart_data = dataframe_to_records(result_df.head(chart_limit))
+        runtime_y_unit = _infer_chart_unit(str(chart_spec.y or ""), result_df)
+        planner_y_unit = str(planner_chart_context.get("y_unit") or "")
+        resolved_y_unit = runtime_y_unit or planner_y_unit
+        if planner_y_unit and runtime_y_unit in {"", "value"}:
+            resolved_y_unit = planner_y_unit
+        chart_context = {
+            **planner_chart_context,
+            "requested": True,
+            "rendered": True,
+            "title": str(chart_spec.title or ""),
+            "x_label": str(chart_spec.x or ""),
+            "y_label": str(chart_spec.y or ""),
+            "y_unit": resolved_y_unit,
+            "chart_type": str(chart_spec.type),
+            "point_count": int(len(chart_data)),
+        }
     else:
+        chart_context = {
+            **planner_chart_context,
+            "requested": True,
+            "rendered": False,
+            "fallback_reason": _chart_fallback_reason(chart_validation),
+        }
         chart_spec = None
 
     return ChartStageResult(
@@ -227,4 +289,5 @@ def run_chart_stage(result_df: pd.DataFrame, draft: Any, *, chat_text: str) -> C
         chart_validation=chart_validation,
         chart_repair_meta=chart_repair_meta,
         chart_data=chart_data,
+        chart_context=chart_context,
     )

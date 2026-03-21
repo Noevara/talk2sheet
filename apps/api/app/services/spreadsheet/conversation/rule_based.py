@@ -9,6 +9,7 @@ from ..core.i18n import t
 from ..planning.intent_accessors import analysis_intent_kind, analysis_intent_payload, analysis_intent_target_dimension
 from .answer_models import AnswerGeneratorContext, GeneratedAnswer
 from .formatters import (
+    _compose_analysis_text,
     _chart_clause,
     _columns_summary,
     _dimension_column,
@@ -38,6 +39,7 @@ class RuleBasedAnswerGenerator:
         locale = context.locale
         intent = analysis_intent_kind(context.draft, fallback=context.draft.intent)
         result_df = context.result_df
+        chart_runtime = context.transform_meta.get("chart_runtime") if isinstance(context.transform_meta, dict) else None
         base_meta = {
             "provider": self.name,
             "intent": intent,
@@ -46,6 +48,7 @@ class RuleBasedAnswerGenerator:
             "result_column_count": int(len(result_df.columns)),
             "chart_enabled": context.chart_spec is not None,
             "empty_result": bool(result_df.empty),
+            **({"chart_context": chart_runtime} if isinstance(chart_runtime, dict) and chart_runtime else {}),
         }
 
         if intent == "unsupported":
@@ -293,32 +296,80 @@ class RuleBasedAnswerGenerator:
         if intent == "ranking":
             summary = self._ranking_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "share":
             summary = self._share_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "weekpart_compare":
             summary = self._weekpart_compare_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "period_compare":
             summary = self._period_compare_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "period_breakdown":
             summary = self._period_breakdown_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "trend":
             summary = self._trend_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "explain_ranked_item":
             target = str(context.draft.planner_meta.get("explain_target_value") or "")
@@ -355,7 +406,15 @@ class RuleBasedAnswerGenerator:
         if intent == "explain_breakdown":
             summary = self._explain_breakdown_summary(context)
             if summary is not None:
-                return self._finalize(context, GeneratedAnswer(answer=summary["answer"], analysis_text=summary["analysis_text"], meta={**base_meta, **summary["meta"]}))
+                return self._finalize(
+                    context,
+                    GeneratedAnswer(
+                        answer=summary["answer"],
+                        analysis_text=summary["analysis_text"],
+                        meta={**base_meta, **summary["meta"]},
+                        segments=summary.get("segments") or {},
+                    ),
+                )
 
         if intent == "ranked_item_lookup":
             dimension = str(context.draft.planner_meta.get("ranked_item_dimension_column") or self._selection_label(context, fallback="item"))
@@ -442,16 +501,29 @@ class RuleBasedAnswerGenerator:
         )
         if top_items != "-":
             analysis_text = f"{analysis_text} {_ta(context.locale, 'ranking_top_list', limit=min(limit, len(valid.index)), items=top_items)}"
+        conclusion = _ta(context.locale, "ranking_answer", leader=_format_value(leader[dimension_column]), leader_value=_format_number(leader[value_column]))
+        evidence = analysis_text
+        risk_note = _compose_analysis_text(
+            _ta(context.locale, "ranking_risk_single_item", dimension=dimension_column) if len(valid.index) <= 1 else "",
+            _risk_note_from_disclosure(context.execution_disclosure),
+        )
         return {
-            "answer": _ta(context.locale, "ranking_answer", leader=_format_value(leader[dimension_column]), leader_value=_format_number(leader[value_column])),
-            "analysis_text": analysis_text,
+            "answer": conclusion,
+            "analysis_text": evidence,
             "meta": {
                 "summary_kind": "ranking",
+                "summary_source": "rule_based_ranking_summary",
                 "dimension_column": dimension_column,
                 "value_column": value_column,
                 "leader": _format_value(leader[dimension_column]),
                 "leader_value": _format_number(leader[value_column]),
                 "top_items": top_items,
+                "point_count": int(len(valid.index)),
+            },
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": risk_note,
             },
         }
 
@@ -498,17 +570,29 @@ class RuleBasedAnswerGenerator:
         )
         if top_list_text:
             analysis_text = f"{analysis_text} {_ta(context.locale, 'share_top_list', limit=min(limit, len(valid.index)), items=top_list_text)}"
+        conclusion = _ta(context.locale, "share_answer", leader=_format_value(leader[dimension_column]), leader_share=leader_share)
+        evidence = analysis_text
+        risk_note = _compose_analysis_text(
+            _ta(context.locale, "ranking_risk_single_item", dimension=dimension_column) if len(valid.index) <= 1 else "",
+            _risk_note_from_disclosure(context.execution_disclosure),
+        )
         return {
-            "answer": _ta(context.locale, "share_answer", leader=_format_value(leader[dimension_column]), leader_share=leader_share),
-            "analysis_text": analysis_text,
+            "answer": conclusion,
+            "analysis_text": evidence,
             "meta": {
                 "summary_kind": "share",
+                "summary_source": "rule_based_share_summary",
                 "dimension_column": dimension_column,
                 "value_column": value_column,
                 "leader": _format_value(leader[dimension_column]),
                 "leader_share": leader_share,
                 "leader_value": _format_number(leader[value_column]),
                 "top_items": top_items,
+            },
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": risk_note,
             },
         }
 
@@ -526,28 +610,42 @@ class RuleBasedAnswerGenerator:
         peak_row = valid.loc[peak_index]
         latest_row = valid.iloc[-1]
         metric_label = _metric_label(context.transform_plan, fallback=value_column)
+        point_count = int(len(valid.index))
+        conclusion = _ta(context.locale, "trend_answer", peak_period=_format_value(peak_row[dimension_column]), metric=metric_label, peak_value=_format_number(peak_row[value_column]))
+        evidence = _ta(
+            context.locale,
+            "trend_analysis",
+            point_count=point_count,
+            metric=metric_label,
+            peak_period=_format_value(peak_row[dimension_column]),
+            peak_value=_format_number(peak_row[value_column]),
+            latest_period=_format_value(latest_row[dimension_column]),
+            latest_value=_format_number(latest_row[value_column]),
+            change_clause=_trend_change_clause(context.locale, valid_values),
+            chart_clause=_chart_clause(context.locale, context.chart_spec),
+        )
+        risk_note = _compose_analysis_text(
+            _ta(context.locale, "trend_risk_short_series", point_count=point_count) if point_count < 3 else "",
+            _risk_note_from_disclosure(context.execution_disclosure),
+        )
         return {
-            "answer": _ta(context.locale, "trend_answer", peak_period=_format_value(peak_row[dimension_column]), metric=metric_label, peak_value=_format_number(peak_row[value_column])),
-            "analysis_text": _ta(
-                context.locale,
-                "trend_analysis",
-                point_count=int(len(valid.index)),
-                metric=metric_label,
-                peak_period=_format_value(peak_row[dimension_column]),
-                peak_value=_format_number(peak_row[value_column]),
-                latest_period=_format_value(latest_row[dimension_column]),
-                latest_value=_format_number(latest_row[value_column]),
-                change_clause=_trend_change_clause(context.locale, valid_values),
-                chart_clause=_chart_clause(context.locale, context.chart_spec),
-            ),
+            "answer": conclusion,
+            "analysis_text": evidence,
             "meta": {
                 "summary_kind": "trend",
+                "summary_source": "rule_based_trend_summary",
                 "dimension_column": dimension_column,
                 "value_column": value_column,
                 "peak_period": _format_value(peak_row[dimension_column]),
                 "peak_value": _format_number(peak_row[value_column]),
                 "latest_period": _format_value(latest_row[dimension_column]),
                 "latest_value": _format_number(latest_row[value_column]),
+                "point_count": point_count,
+            },
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": risk_note,
             },
         }
 
@@ -573,26 +671,34 @@ class RuleBasedAnswerGenerator:
             leader_row = valid.iloc[0]
             other_row = valid.iloc[1] if len(valid.index) > 1 else valid.iloc[0]
         metric_label = _metric_label(context.transform_plan, fallback=value_column)
+        conclusion = _ta(context.locale, "weekpart_compare_answer", leader_label=_format_value(leader_row[dimension_column]), leader_value=_format_number(leader_row[value_column]), other_label=_format_value(other_row[dimension_column]), other_value=_format_number(other_row[value_column]))
+        evidence = _ta(
+            context.locale,
+            "weekpart_compare_analysis",
+            metric=metric_label,
+            leader_label=_format_value(leader_row[dimension_column]),
+            leader_value=_format_number(leader_row[value_column]),
+            other_label=_format_value(other_row[dimension_column]),
+            other_value=_format_number(other_row[value_column]),
+            chart_clause=_chart_clause(context.locale, context.chart_spec),
+        )
         return {
-            "answer": _ta(context.locale, "weekpart_compare_answer", leader_label=_format_value(leader_row[dimension_column]), leader_value=_format_number(leader_row[value_column]), other_label=_format_value(other_row[dimension_column]), other_value=_format_number(other_row[value_column])),
-            "analysis_text": _ta(
-                context.locale,
-                "weekpart_compare_analysis",
-                metric=metric_label,
-                leader_label=_format_value(leader_row[dimension_column]),
-                leader_value=_format_number(leader_row[value_column]),
-                other_label=_format_value(other_row[dimension_column]),
-                other_value=_format_number(other_row[value_column]),
-                chart_clause=_chart_clause(context.locale, context.chart_spec),
-            ),
+            "answer": conclusion,
+            "analysis_text": evidence,
             "meta": {
                 "summary_kind": "weekpart_compare",
+                "summary_source": "rule_based_weekpart_compare_summary",
                 "dimension_column": dimension_column,
                 "value_column": value_column,
                 "leader_label": _format_value(leader_row[dimension_column]),
                 "leader_value": _format_number(leader_row[value_column]),
                 "other_label": _format_value(other_row[dimension_column]),
                 "other_value": _format_number(other_row[value_column]),
+            },
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": _risk_note_from_disclosure(context.execution_disclosure),
             },
         }
 
@@ -609,10 +715,19 @@ class RuleBasedAnswerGenerator:
         previous_value_raw = row[previous_period]
         change_value_raw = row["change_value"] if "change_value" in result_df.columns else None
         change_pct_raw = row["change_pct"] if "change_pct" in result_df.columns else None
+        compare_ratio_raw = row["compare_ratio"] if "compare_ratio" in result_df.columns else None
         try:
             delta = float(change_value_raw or 0)
         except Exception:
             delta = 0.0
+        previous_value_number: float | None = None
+        try:
+            previous_candidate = float(previous_value_raw)
+            if math.isfinite(previous_candidate):
+                previous_value_number = previous_candidate
+        except Exception:
+            previous_value_number = None
+        has_zero_base = previous_value_number is not None and abs(previous_value_number) < 1e-9
         change_pct = "-"
         try:
             pct_value = float(change_pct_raw)
@@ -620,9 +735,40 @@ class RuleBasedAnswerGenerator:
                 change_pct = f"{pct_value * 100:.1f}%"
         except Exception:
             pass
+        ratio_value = "-"
+        try:
+            numeric_ratio = float(compare_ratio_raw) if compare_ratio_raw not in {None, ""} else float(current_value_raw) / float(previous_value_raw)
+            if math.isfinite(numeric_ratio):
+                ratio_value = f"{numeric_ratio:.3f}x"
+        except Exception:
+            pass
         metric_label = str(context.draft.planner_meta.get("compare_metric_column") or _metric_label(context.transform_plan, fallback="value"))
-        return {
-            "answer": _ta(
+        comparison_type = str(context.draft.planner_meta.get("comparison_type") or "")
+        compare_basis = str(context.draft.planner_meta.get("compare_basis") or "")
+
+        if comparison_type == "ratio":
+            conclusion = _ta(
+                context.locale,
+                "period_compare_ratio_answer",
+                previous_period=previous_period,
+                current_period=current_period,
+                ratio_value=ratio_value,
+                previous_value=_format_number(previous_value_raw),
+                current_value=_format_number(current_value_raw),
+            )
+        elif comparison_type == "delta":
+            conclusion = _ta(
+                context.locale,
+                "period_compare_delta_answer",
+                previous_period=previous_period,
+                current_period=current_period,
+                previous_value=_format_number(previous_value_raw),
+                current_value=_format_number(current_value_raw),
+                change_value=_format_number(abs(delta)),
+                direction=_period_compare_direction(context.locale, delta),
+            )
+        else:
+            conclusion = _ta(
                 context.locale,
                 "period_compare_answer",
                 previous_period=previous_period,
@@ -632,24 +778,42 @@ class RuleBasedAnswerGenerator:
                 change_value=_format_number(abs(delta)),
                 change_pct=change_pct,
                 direction=_period_compare_direction(context.locale, delta),
-            ),
-            "analysis_text": _ta(
-                context.locale,
-                "period_compare_analysis",
-                metric=metric_label,
-                previous_period=previous_period,
-                current_period=current_period,
-                previous_value=_format_number(previous_value_raw),
-                current_value=_format_number(current_value_raw),
-            ),
+            )
+        evidence = _ta(
+            context.locale,
+            "period_compare_analysis",
+            metric=metric_label,
+            previous_period=previous_period,
+            current_period=current_period,
+            previous_value=_format_number(previous_value_raw),
+            current_value=_format_number(current_value_raw),
+        )
+        risk_note = _compose_analysis_text(
+            _ta(context.locale, "period_compare_risk_zero_base", previous_period=previous_period) if has_zero_base else "",
+            _risk_note_from_disclosure(context.execution_disclosure),
+        )
+
+        return {
+            "answer": conclusion,
+            "analysis_text": evidence,
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": risk_note,
+            },
             "meta": {
                 "summary_kind": "period_compare",
+                "summary_source": "rule_based_period_compare_summary",
                 "current_period": current_period,
                 "previous_period": previous_period,
                 "current_value": _format_number(current_value_raw),
                 "previous_value": _format_number(previous_value_raw),
                 "change_value": _format_number(change_value_raw),
                 "change_pct": change_pct,
+                "compare_ratio": ratio_value,
+                "comparison_type": comparison_type or "mom",
+                "compare_basis": compare_basis or "previous_period",
+                "zero_base": has_zero_base,
             },
         }
 
@@ -668,11 +832,19 @@ class RuleBasedAnswerGenerator:
         else:
             items = ", ".join(f"{_format_value(row[dimension_column])} = {_format_number(row[value_column])}" for _, row in valid.iterrows())
         metric_label = _metric_label(context.transform_plan, fallback=value_column)
+        conclusion = _ta(context.locale, "period_breakdown_answer", items=items)
+        evidence = _ta(context.locale, "period_breakdown_analysis", metric=metric_label, items=items, chart_clause=_chart_clause(context.locale, context.chart_spec))
         return {
-            "answer": _ta(context.locale, "period_breakdown_answer", items=items),
-            "analysis_text": _ta(context.locale, "period_breakdown_analysis", metric=metric_label, items=items, chart_clause=_chart_clause(context.locale, context.chart_spec)),
+            "answer": conclusion,
+            "analysis_text": evidence,
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": _risk_note_from_disclosure(context.execution_disclosure),
+            },
             "meta": {
                 "summary_kind": "period_breakdown",
+                "summary_source": "rule_based_period_breakdown_summary",
                 "dimension_column": dimension_column,
                 "value_column": value_column,
                 "items": items,
@@ -695,20 +867,28 @@ class RuleBasedAnswerGenerator:
             runner_clause = _ta(context.locale, "runner_clause", runner=_format_value(runner[dimension_column]), runner_value=_format_number(runner[value_column]))
         target = str(context.draft.planner_meta.get("breakdown_target_value") or "")
         target_dimension = str(context.draft.planner_meta.get("breakdown_target_dimension") or "")
+        conclusion = _ta(context.locale, "explain_breakdown_answer", target=target or target_dimension, dimension=dimension_column, leader=_format_value(leader[dimension_column]), leader_value=_format_number(leader[value_column]))
+        evidence = _ta(
+            context.locale,
+            "explain_breakdown_analysis",
+            target_dimension=target_dimension or "target",
+            target=target or target_dimension,
+            dimension=dimension_column,
+            leader=_format_value(leader[dimension_column]),
+            leader_value=_format_number(leader[value_column]),
+            runner_clause=runner_clause,
+        )
         return {
-            "answer": _ta(context.locale, "explain_breakdown_answer", target=target or target_dimension, dimension=dimension_column, leader=_format_value(leader[dimension_column]), leader_value=_format_number(leader[value_column])),
-            "analysis_text": _ta(
-                context.locale,
-                "explain_breakdown_analysis",
-                target_dimension=target_dimension or "target",
-                target=target or target_dimension,
-                dimension=dimension_column,
-                leader=_format_value(leader[dimension_column]),
-                leader_value=_format_number(leader[value_column]),
-                runner_clause=runner_clause,
-            ),
+            "answer": conclusion,
+            "analysis_text": evidence,
+            "segments": {
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": _risk_note_from_disclosure(context.execution_disclosure),
+            },
             "meta": {
                 "summary_kind": "explain_breakdown",
+                "summary_source": "rule_based_explain_breakdown_summary",
                 "target": target,
                 "target_dimension": target_dimension,
                 "dimension_column": dimension_column,
@@ -723,10 +903,27 @@ class RuleBasedAnswerGenerator:
             context.selection_plan.columns[-1] if context.selection_plan.columns else _metric_label(context.transform_plan)
         )
         count = int(len(context.result_df.index))
+        row_summary = _row_summary(context.result_df)
+        conclusion = _ta(context.locale, "detail_answer", count=count, column=sort_column)
+        evidence = _ta(context.locale, "detail_analysis", count=count, column=sort_column, row_summary=row_summary)
+        risk_note = _risk_note_from_disclosure(context.execution_disclosure)
         return GeneratedAnswer(
-            answer=_ta(context.locale, "detail_answer", count=count, column=sort_column),
-            analysis_text=_ta(context.locale, "detail_analysis", count=count, column=sort_column, row_summary=_row_summary(context.result_df)),
-            meta={**base_meta, "summary_kind": "detail", "sort_column": sort_column},
+            answer=conclusion,
+            analysis_text=evidence,
+            meta={
+                **base_meta,
+                "summary_kind": "detail",
+                "sort_column": sort_column,
+                "summary_source": "rule_based_detail_summary",
+                "detail_source": "result_df_rows",
+                "detail_row_count": count,
+                "detail_columns": [str(column) for column in context.result_df.columns],
+            },
+            segments={
+                "conclusion": conclusion,
+                "evidence": evidence,
+                "risk_note": risk_note,
+            },
         )
 
     def _pivot_summary(self, context: AnswerGeneratorContext, base_meta: dict[str, Any]) -> GeneratedAnswer:

@@ -23,14 +23,14 @@ def apply_derived_columns(df: Any, derived_columns: list[DerivedColumn]) -> tupl
             dt = coerce_datetime_series(out[source_column])
             valid_mask = dt.notna()
             if item.grain == "day":
-                out[item.as_name] = dt.dt.strftime("%Y-%m-%d")
+                out[item.as_name] = dt.dt.strftime("%Y-%m-%d").where(valid_mask)
             elif item.grain == "week":
                 iso = dt.dt.isocalendar()
                 out[item.as_name] = (iso.year.astype("Int64").astype(str) + "-W" + iso.week.astype("Int64").astype(str).str.zfill(2)).where(
                     valid_mask
                 )
             elif item.grain == "month":
-                out[item.as_name] = dt.dt.strftime("%Y-%m")
+                out[item.as_name] = dt.dt.strftime("%Y-%m").where(valid_mask)
             elif item.grain == "quarter":
                 out[item.as_name] = (dt.dt.year.astype("Int64").astype(str) + "-Q" + dt.dt.quarter.astype("Int64").astype(str)).where(
                     valid_mask

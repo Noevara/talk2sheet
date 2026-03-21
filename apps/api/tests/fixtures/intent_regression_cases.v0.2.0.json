@@ -1,0 +1,119 @@
+[
+  {
+    "id": "compare_mom_delta_zh",
+    "category": "compare",
+    "dataset": "monthly_compare",
+    "chat_text": "对比上个月总金额变化",
+    "requested_mode": "auto",
+    "expected_intent": "period_compare",
+    "expected_mode": "text",
+    "expected_compare_basis": "previous_period",
+    "expected_comparison_type": "delta",
+    "expected_bucket_grain": "month"
+  },
+  {
+    "id": "compare_yoy_ratio_zh",
+    "category": "compare",
+    "dataset": "monthly_compare",
+    "chat_text": "同比占比是多少",
+    "requested_mode": "auto",
+    "expected_intent": "period_compare",
+    "expected_mode": "text",
+    "expected_compare_basis": "year_over_year",
+    "expected_comparison_type": "ratio",
+    "expected_bucket_grain": "month"
+  },
+  {
+    "id": "filter_groupby_topn_zh",
+    "category": "filter",
+    "dataset": "billing",
+    "chat_text": "只看 cn-sh，按服务统计费用前2",
+    "requested_mode": "auto",
+    "expected_intent": "ranking",
+    "expected_mode": "text",
+    "expected_top_k": 2,
+    "expected_value_filters": [
+      {
+        "column": "Region",
+        "value": "cn-sh"
+      }
+    ]
+  },
+  {
+    "id": "filter_groupby_topn_en",
+    "category": "filter",
+    "dataset": "billing",
+    "chat_text": "Top 2 services in cn-bj by amount",
+    "requested_mode": "auto",
+    "expected_intent": "ranking",
+    "expected_mode": "text",
+    "expected_top_k": 2,
+    "expected_value_filters": [
+      {
+        "column": "Region",
+        "value": "cn-bj"
+      }
+    ]
+  },
+  {
+    "id": "time_trend_recent_month_window",
+    "category": "time_agg",
+    "dataset": "monthly_compare",
+    "chat_text": "看最近2个月趋势",
+    "requested_mode": "auto",
+    "expected_intent": "trend",
+    "expected_mode": "text",
+    "expected_bucket_grain": "month",
+    "expected_recent_period_count": 2
+  },
+  {
+    "id": "time_trend_last_month_day_grain",
+    "category": "time_agg",
+    "dataset": "billing",
+    "chat_text": "按天看上月趋势",
+    "requested_mode": "auto",
+    "expected_intent": "trend",
+    "expected_mode": "text",
+    "expected_bucket_grain": "day",
+    "expected_requested_period": "2025-01"
+  },
+  {
+    "id": "topn_ranking_en",
+    "category": "topn",
+    "dataset": "billing",
+    "chat_text": "Show the top 3 services by amount.",
+    "requested_mode": "auto",
+    "expected_intent": "ranking",
+    "expected_mode": "text",
+    "expected_top_k": 3
+  },
+  {
+    "id": "topn_share_zh",
+    "category": "topn",
+    "dataset": "billing",
+    "chat_text": "按服务看费用占比",
+    "requested_mode": "auto",
+    "expected_intent": "share",
+    "expected_mode": "text",
+    "expected_top_k": 8
+  },
+  {
+    "id": "detail_single_transaction_zh",
+    "category": "detail_summary",
+    "dataset": "billing",
+    "chat_text": "最多3次单笔消费是什么",
+    "requested_mode": "auto",
+    "expected_intent": "detail_rows",
+    "expected_mode": "text",
+    "expected_top_k": 3
+  },
+  {
+    "id": "detail_explicit_rows_zh",
+    "category": "detail_summary",
+    "dataset": "billing",
+    "chat_text": "请给我前5条明细记录",
+    "requested_mode": "auto",
+    "expected_intent": "detail_rows",
+    "expected_mode": "text"
+  }
+]

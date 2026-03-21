@@ -21,6 +21,8 @@ def build_execution_disclosure(locale: str, *, rows_loaded: int, exact_used: boo
             data_scope="exact_full_table",
             exact_used=True,
             scope_text=t(locale, "scope_exact"),
+            fallback_reason=fallback_reason,
+            fallback_reason_code="chart_unavailable" if fallback_reason else "",
             max_rows=settings.max_analysis_rows,
         )
     if rows_loaded >= settings.max_analysis_rows:

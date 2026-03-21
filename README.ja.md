@@ -4,6 +4,8 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
+現在の安定版リリースは `v0.2.0` です。
+
 ## 現在の対象範囲
 
 現在のリリースは次に集中しています。
@@ -20,13 +22,19 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - ファイルアップロード、sheet 一覧、プレビュー
 - ワークブック内で 1 つの対象シートを選ぶ auto routing
 - 行数、合計、平均、重複除去件数
+- 期間比較: 前期比 / 前年比、差分、比率
 - Top N / ranking
+- 条件フィルター + groupby + Top N の複合質問
 - detail rows
-- trend 分析と basic chart
+- detail + summary の構造化回答カード（結論 / 根拠 / 注意点）
+- 日 / 週 / 月粒度の trend 分析
+- チャート推奨、チャート文脈メタ情報、描画不可時のテキストフォールバック
 - 軽量な時系列 forecast
 - `auto / text / chart` mode 切替
 - ユーザーが確認できる分析パイプライン、sheet routing 要約、構造化回答
 - シート/列の clarification カードを分けて表示し、選択後は自然な確認文で同じ質問を継続
+- 結果カードの「続けて質問」提案（入力欄へ自動反映後に編集して送信可能）
+- intent 回帰コーパスとオフライン評価（CI に統合）
 
 現在まだ対応していないもの：
 
@@ -52,6 +60,7 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 - 日本語: このファイル
 - アーキテクチャ: [docs/architecture.ja.md](./docs/architecture.ja.md)
 - 変更履歴: [CHANGELOG.md](./CHANGELOG.md)
+- 最新リリースノート: [docs/releases/v0.2.0.md](./docs/releases/v0.2.0.md)
 
 ## 使い方
 
@@ -164,6 +173,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 検証コマンド：
 
 - API: `pytest -q apps/api`
+- Intent 回帰評価: `python apps/api/scripts/eval_intent_cases.py`
 - Web: `cd apps/web && npm run ci`
 - 全体: `make ci-check`
 

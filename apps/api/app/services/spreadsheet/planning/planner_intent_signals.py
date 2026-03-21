@@ -137,6 +137,54 @@ def _compare_question(chat_text: str) -> bool:
     )
 
 
+def _year_over_year_compare(chat_text: str) -> bool:
+    return _contains_any(
+        chat_text,
+        (
+            "同比",
+            "去年同期",
+            "year over year",
+            "yoy",
+        ),
+    )
+
+
+def _ratio_compare(chat_text: str) -> bool:
+    text = str(chat_text or "")
+    return _contains_any(
+        text,
+        (
+            "占比",
+            "比例",
+            "比率",
+            "占多少",
+            "占到",
+            "ratio",
+            "percentage",
+            "percent",
+        ),
+    ) or "%" in text
+
+
+def _delta_compare(chat_text: str) -> bool:
+    return _contains_any(
+        chat_text,
+        (
+            "差值",
+            "差额",
+            "变化",
+            "变动",
+            "变化了多少",
+            "涨了多少",
+            "降了多少",
+            "difference",
+            "delta",
+            "increase",
+            "decrease",
+        ),
+    )
+
+
 def _distinct_question(chat_text: str) -> bool:
     return _contains_any(chat_text, ("distinct", "去重", "不重复", "唯一"))
 

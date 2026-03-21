@@ -201,10 +201,12 @@ def _reuse_previous_plan_as_period_compare(
         planner_meta={
             "followup_reused_previous_plan": True,
             "compare_basis": basis,
+            "comparison_type": "yoy" if basis == "year_over_year" else "mom",
             "compare_grain": grain,
             "current_period": current_period,
             "previous_period": previous_period,
             "compare_metric_column": compare_metric_column,
+            "compare_window": [previous_period, current_period],
         },
     )
 

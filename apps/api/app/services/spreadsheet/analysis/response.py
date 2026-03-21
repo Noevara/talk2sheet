@@ -96,4 +96,6 @@ def build_success_pipeline(
         pipeline["chart_guardrail"] = chart_stage.chart_guardrail_meta
         pipeline["chart_validation"] = chart_stage.chart_validation
         pipeline["chart_repair"] = chart_stage.chart_repair_meta
+    if chart_stage.chart_context:
+        pipeline["chart_context"] = chart_stage.chart_context
     return pipeline

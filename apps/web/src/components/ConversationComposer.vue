@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import type { UiMessages } from "../i18n/messages";
 import type { ChatMode } from "../types";
@@ -7,6 +7,7 @@ import type { ChatMode } from "../types";
 const props = defineProps<{
   ui: UiMessages;
   question: string;
+  focusToken?: number;
   mode: ChatMode;
   chatBusy: boolean;
 }>();
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 
 const helperPanel = ref<"examples" | "guide" | null>(null);
 const composerRef = ref<HTMLElement | null>(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 function toggleHelperPanel(panel: "examples" | "guide"): void {
   helperPanel.value = helperPanel.value === panel ? null : panel;
@@ -51,6 +53,23 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
 });
+
+watch(
+  () => props.focusToken,
+  async (current, previous) => {
+    if (!current || current === previous) {
+      return;
+    }
+    await nextTick();
+    const textarea = textareaRef.value;
+    if (!textarea) {
+      return;
+    }
+    textarea.focus();
+    const cursor = textarea.value.length;
+    textarea.setSelectionRange(cursor, cursor);
+  },
+);
 </script>
 
 <template>
@@ -123,6 +142,7 @@ onBeforeUnmount(() => {
     </div>
 
     <textarea
+      ref="textareaRef"
       class="composer-textarea"
       :value="props.question"
       :placeholder="props.ui.questionPlaceholder"

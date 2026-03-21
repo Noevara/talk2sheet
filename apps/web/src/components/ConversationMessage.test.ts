@@ -231,6 +231,71 @@ describe("ConversationMessage", () => {
     expect(downloadChartPng).toHaveBeenCalledWith("talk2sheet-sheet-3-line.png", message.chartSpec, message.chartData);
   });
 
+  it("renders chart context metadata when provided by pipeline", () => {
+    const message: ChatMessage = {
+      id: "assistant-chart-context",
+      role: "assistant",
+      text: "Chart ready.",
+      clarification: null,
+      chartSpec: {
+        type: "bar",
+        title: "Amount by Service",
+        x: "Service Name",
+        y: "value",
+      },
+      chartData: [{ "Service Name": "Compute", value: 180 }],
+      pipeline: {
+        chart_context: {
+          requested: true,
+          rendered: true,
+          title: "Amount by Service",
+          x_label: "Service Name",
+          y_label: "value",
+          y_unit: "amount",
+          point_count: 1,
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Amount by Service");
+    expect(wrapper.text()).toContain("X: Service Name");
+    expect(wrapper.text()).toContain("Y: value");
+    expect(wrapper.text()).toContain("(amount)");
+    expect(wrapper.text()).toContain("Points: 1");
+  });
+
+  it("renders chart fallback note when chart is downgraded", () => {
+    const message: ChatMessage = {
+      id: "assistant-chart-fallback",
+      role: "assistant",
+      text: "Returned text fallback.",
+      clarification: null,
+      pipeline: {
+        chart_context: {
+          requested: true,
+          rendered: false,
+          fallback_reason: "Chart output was downgraded to text because chart rendering failed.",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Chart output was downgraded to text");
+  });
+
   it("renders forecast summary cards from pipeline metadata", () => {
     const message: ChatMessage = {
       id: "assistant-forecast",
@@ -274,5 +339,177 @@ describe("ConversationMessage", () => {
     expect(wrapper.text()).toContain("2,100 - 2,260");
     expect(wrapper.text()).toContain("Linear regression");
     expect(wrapper.text()).toContain("2025-10 - 2026-03");
+  });
+
+  it("renders period comparison cards from pipeline metadata", () => {
+    const message: ChatMessage = {
+      id: "assistant-compare",
+      role: "assistant",
+      text: "Compared periods.",
+      clarification: null,
+      pipeline: {
+        planner: {
+          intent: "period_compare",
+          compare_basis: "year_over_year",
+          current_period: "2025-02",
+          previous_period: "2024-02",
+        },
+        answer_generation: {
+          summary_kind: "period_compare",
+          current_period: "2025-02",
+          previous_period: "2024-02",
+          current_value: "60",
+          previous_value: "45",
+          change_value: "15",
+          change_pct: "33.3%",
+          compare_ratio: "1.333x",
+          compare_basis: "year_over_year",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Period comparison");
+    expect(wrapper.text()).toContain("Year over year");
+    expect(wrapper.text()).toContain("2025-02");
+    expect(wrapper.text()).toContain("2024-02");
+    expect(wrapper.text()).toContain("33.3%");
+    expect(wrapper.text()).toContain("1.333x");
+  });
+
+  it("renders applied filters and top-k summary from pipeline metadata", () => {
+    const message: ChatMessage = {
+      id: "assistant-scope-summary",
+      role: "assistant",
+      text: "Here is the filtered top-k result.",
+      clarification: null,
+      pipeline: {
+        planner: {
+          intent: "ranking",
+          top_k: 2,
+          value_filters: [{ column: "Region", value: "cn-sh" }],
+        },
+        selection_plan: {
+          columns: ["Service Name", "Amount"],
+          filters: [{ col: "Region", op: "=", value: "cn-sh" }],
+        },
+        transform_plan: {
+          groupby: ["Service Name"],
+          metrics: [{ agg: "sum", col: "Amount", as_name: "value" }],
+          order_by: { col: "value", dir: "desc" },
+          top_k: 2,
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Applied filters");
+    expect(wrapper.text()).toContain("Region = cn-sh");
+    expect(wrapper.text()).toContain("Top K");
+    expect(wrapper.text()).toContain("2");
+  });
+
+  it("uses evidence table label for detail summary responses", () => {
+    const message: ChatMessage = {
+      id: "assistant-detail-summary",
+      role: "assistant",
+      text: "Returned detail rows.",
+      clarification: null,
+      pipeline: {
+        answer_generation: {
+          summary_kind: "detail",
+        },
+        transform_plan: {
+          return_rows: true,
+        },
+        result_columns: ["Transaction ID", "Amount"],
+        preview_rows: [["T-003", 120]],
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Evidence table");
+  });
+
+  it("renders trend grain summary from planner metadata", () => {
+    const message: ChatMessage = {
+      id: "assistant-trend-grain",
+      role: "assistant",
+      text: "Trend generated.",
+      clarification: null,
+      pipeline: {
+        planner: {
+          intent: "trend",
+          bucket_grain: "week",
+        },
+        transform_plan: {
+          derived_columns: [{ as_name: "week_bucket", kind: "date_bucket", source_col: "Date", grain: "week" }],
+          groupby: ["week_bucket"],
+          metrics: [{ agg: "sum", col: "Amount", as_name: "value" }],
+          order_by: { col: "week_bucket", dir: "asc" },
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Trend grain");
+    expect(wrapper.text()).toContain("Week");
+  });
+
+  it("renders follow-up suggestions and emits selected prompt", async () => {
+    const message: ChatMessage = {
+      id: "assistant-followup",
+      role: "assistant",
+      text: "Ranking result ready.",
+      clarification: null,
+      pipeline: {
+        planner: {
+          intent: "ranking",
+          top_k: 5,
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Continue with");
+    expect(wrapper.text()).toContain("Keep the same scope but limit to Top 3.");
+
+    const button = wrapper
+      .findAll("button.message-action-followup")
+      .find((item) => item.text().includes("Top 3"));
+    expect(button).toBeTruthy();
+
+    await button!.trigger("click");
+    expect(wrapper.emitted("followupSelect")).toEqual([["Keep the same scope but limit to Top 3."]]);
   });
 });

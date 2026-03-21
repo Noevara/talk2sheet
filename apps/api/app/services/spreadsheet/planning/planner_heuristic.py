@@ -5,7 +5,7 @@ from typing import Any, Callable
 from ..conversation.context_interpreter import get_default_context_interpreter
 from .followup.planner_reuse import try_reuse_followup_plan
 from .intent_understanding import understand_analysis_intent
-from .planner_heuristic_actions import build_forecast_plan, try_build_heuristic_action
+from .planner_heuristic_actions import build_forecast_plan, build_period_compare_plan, try_build_heuristic_action
 from .planner_rules import build_heuristic_planning_context
 from .planner_runtime import (
     build_action_runtime_context,
@@ -88,6 +88,26 @@ class HeuristicPlanner:
                 draft=reused_followup,
             )
             return reused_followup
+
+        period_compare_plan = build_period_compare_plan(
+            df,
+            chat_text=chat_text,
+            date_column=context.columns.date_column,
+            amount_column=context.columns.amount_column,
+            profiles=context.profiles,
+            planner_meta=planner_meta,
+            plan_draft_factory=PlanDraft,
+        )
+        if period_compare_plan is not None:
+            period_compare_plan.analysis_intent = understand_analysis_intent(
+                question=context.followup.effective_chat_text,
+                mode=period_compare_plan.mode,
+                profiles=context.profiles,
+                columns=context.columns,
+                followup_context=context.followup.followup_context,
+                draft=period_compare_plan,
+            )
+            return period_compare_plan
 
         heuristic_action = try_build_heuristic_action(
             df,

@@ -11,6 +11,8 @@ class AnalysisTimeScope(BaseModel):
     grain: str | None = None
     requested_period: str | None = None
     requested_periods: list[str] = Field(default_factory=list)
+    base_period: str | None = None
+    compare_window: list[str] = Field(default_factory=list)
     is_followup: bool = False
 
 

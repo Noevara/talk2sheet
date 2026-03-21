@@ -1,4 +1,4 @@
-.PHONY: api-dev web-dev api-test api-lint web-build contracts-check api-check web-check ci-check
+.PHONY: api-dev web-dev api-test api-lint web-build contracts-check api-intent-eval api-check web-check ci-check
 
 api-dev:
 	cd apps/api && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -18,6 +18,9 @@ api-lint:
 contracts-check:
 	cd apps/api && python scripts/check_contract_artifacts.py
 
+api-intent-eval:
+	cd apps/api && python scripts/eval_intent_cases.py
+
 api-check:
 	cd apps/api && python -m compileall app
 	cd apps/api && pytest -q
@@ -28,4 +31,5 @@ web-check:
 ci-check:
 	make contracts-check
 	make api-check
+	make api-intent-eval
 	make web-check

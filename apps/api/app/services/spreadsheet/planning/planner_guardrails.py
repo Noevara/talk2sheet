@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from ..core.schema import ChartSpec, Metric, SelectionPlan, TransformPlan
+from ..pipeline.column_profile import get_column_profiles
 
 
 def _contains_any(text: str, tokens: list[str]) -> bool:
@@ -128,11 +129,26 @@ def sanitize_transform_plan(plan: TransformPlan, question: str, df: Any, *, mode
 def sanitize_chart_spec(spec: ChartSpec, question: str, df: Any) -> tuple[ChartSpec, dict[str, Any]]:
     data = spec.model_dump()
     changes: list[dict[str, Any]] = []
+    columns = [str(column) for column in getattr(df, "columns", [])]
+    profiles = get_column_profiles(df)
 
     allowed_types = {"line", "bar", "pie", "scatter"}
     if data.get("type") not in allowed_types:
         changes.append({"field": "type", "from": data.get("type"), "to": "bar", "reason": "unsupported_chart_type"})
         data["type"] = "bar"
+
+    x_column = str(data.get("x") or "")
+    x_profile = profiles.get(x_column) or {}
+    x_type = str(x_profile.get("semantic_type") or "")
+    row_count = int(len(getattr(df, "index", [])))
+    recommended_type = str(data.get("type") or "bar")
+    if recommended_type == "pie" and (x_type in {"numeric", "date"} or row_count > 12):
+        recommended_type = "bar"
+    if recommended_type == "line" and x_type not in {"date", "numeric", "unknown"}:
+        recommended_type = "bar"
+    if recommended_type != data.get("type"):
+        changes.append({"field": "type", "from": data.get("type"), "to": recommended_type, "reason": "chart_type_recommended"})
+        data["type"] = recommended_type
 
     top_k = data.get("top_k")
     if isinstance(top_k, int):
@@ -141,8 +157,19 @@ def sanitize_chart_spec(spec: ChartSpec, question: str, df: Any) -> tuple[ChartS
             changes.append({"field": "top_k", "from": top_k, "to": bounded, "reason": "chart_top_k_clamped"})
             data["top_k"] = bounded
 
-    if not data.get("title"):
-        data["title"] = str(question or "").strip() or "Chart"
+    title = str(data.get("title") or "").strip()
+    if not title:
+        y_label = str(data.get("y") or "value")
+        x_label = str(data.get("x") or "label")
+        if str(data.get("type")) == "pie":
+            title = f"{y_label} share by {x_label}"
+        else:
+            title = f"{y_label} by {x_label}"
+        data["title"] = title
         changes.append({"field": "title", "from": None, "to": data["title"], "reason": "default_title"})
+    elif len(title) > 80:
+        trimmed = title[:80].rstrip()
+        changes.append({"field": "title", "from": title, "to": trimmed, "reason": "chart_title_trimmed"})
+        data["title"] = trimmed
 
     return ChartSpec.model_validate(data), {"changes": changes}

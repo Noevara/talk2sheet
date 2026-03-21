@@ -36,6 +36,12 @@
       "x": "Service Name",
       "y": "value",
       "top_k": 2
+    },
+    "expected_chart_context": {
+      "requested": true,
+      "rendered": true,
+      "x_label": "Service Name",
+      "y_label": "value"
     }
   },
   {

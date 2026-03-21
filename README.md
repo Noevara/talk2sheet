@@ -4,6 +4,8 @@ Talk2Sheet is an open-source full-stack framework for conversational analytics o
 
 It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
+Latest stable release: `v0.2.0`.
+
 ## Current Scope
 
 Current release focus:
@@ -20,13 +22,19 @@ Supported now:
 - file upload, sheet list, and preview
 - workbook-aware routing to one target sheet
 - row count, totals, averages, distinct count
+- period compare: month-over-month / year-over-year, delta, ratio
 - Top N / ranking
+- filter + groupby + Top N combined questions
 - detail rows
-- trend analysis and basic charts
+- detail + summary structured answer cards (conclusion / evidence / risk note)
+- trend analysis with day/week/month grain
+- chart recommendation, chart context metadata, and text fallback when chart rendering is not available
 - lightweight time-series forecasting
 - `auto / text / chart` response mode
 - user-visible analysis pipeline, sheet-routing summary, and structured answer output
 - clarification cards for both sheet and column resolution, with natural confirmation follow-up
+- result-card follow-up suggestions that prefill the next question draft
+- intent regression corpus and offline evaluation in CI
 
 Not supported yet:
 
@@ -52,6 +60,7 @@ packages/contracts/  generated OpenAPI artifacts
 - Japanese: [README.ja.md](./README.ja.md)
 - Architecture overview: [docs/architecture.en.md](./docs/architecture.en.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
+- Latest release notes: [docs/releases/v0.2.0.md](./docs/releases/v0.2.0.md)
 
 ## How It Works
 
@@ -166,6 +175,7 @@ Contract artifacts are generated from FastAPI runtime schema.
 Validation commands:
 
 - API: `pytest -q apps/api`
+- Intent regression: `python apps/api/scripts/eval_intent_cases.py`
 - Web: `cd apps/web && npm run ci`
 - Combined: `make ci-check`
 

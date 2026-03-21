@@ -8,6 +8,7 @@ defineProps<{
   ui: UiMessages;
   messages: ChatMessage[];
   question: string;
+  composerFocusToken: number;
   mode: ChatMode;
   chatBusy: boolean;
   errorMessage: string;
@@ -15,6 +16,7 @@ defineProps<{
 
 const emit = defineEmits<{
   clarificationSelect: [payload: { messageId: string; value: string }];
+  followupSelect: [question: string];
   "update:question": [value: string];
   "update:mode": [value: ChatMode];
   submit: [];
@@ -30,13 +32,19 @@ const emit = defineEmits<{
       </div>
     </div>
 
-    <ConversationPanel :messages="messages" :ui="ui" @clarification-select="emit('clarificationSelect', $event)" />
+    <ConversationPanel
+      :messages="messages"
+      :ui="ui"
+      @clarification-select="emit('clarificationSelect', $event)"
+      @followup-select="emit('followupSelect', $event)"
+    />
 
     <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
     <ConversationComposer
       :ui="ui"
       :question="question"
+      :focus-token="composerFocusToken"
       :mode="mode"
       :chat-busy="chatBusy"
       @update:question="emit('update:question', $event)"

@@ -10,6 +10,20 @@ from ..core.schema import Filter
 from ..execution.executor import _coerce_datetime_series
 from .planner_text_utils import _contains_any
 
+_CN_NUMBERS = {
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+    "两": 2,
+}
+
 
 def _extract_month_literal(chat_text: str) -> str | None:
     text = str(chat_text or "")
@@ -103,6 +117,28 @@ def _extract_month_numbers(chat_text: str) -> list[int]:
     return list(dict.fromkeys(month for month in found if 1 <= month <= 12))
 
 
+def _parse_chinese_small_number(token: str) -> int | None:
+    text = str(token or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        value = int(text)
+        return value if value > 0 else None
+    if text in _CN_NUMBERS:
+        return _CN_NUMBERS[text]
+    if text.startswith("十"):
+        tail = text[1:]
+        if not tail:
+            return 10
+        if tail in _CN_NUMBERS:
+            return 10 + _CN_NUMBERS[tail]
+    if text.endswith("十") and text[0] in _CN_NUMBERS:
+        return _CN_NUMBERS[text[0]] * 10
+    if len(text) == 2 and text[0] in _CN_NUMBERS and text[1] in _CN_NUMBERS:
+        return _CN_NUMBERS[text[0]] * 10 + _CN_NUMBERS[text[1]]
+    return None
+
+
 def _available_month_buckets(df: Any, *, date_column: str) -> list[str]:
     if date_column not in getattr(df, "columns", []):
         return []
@@ -147,6 +183,10 @@ def _resolve_requested_month_buckets(df: Any, *, date_column: str | None, chat_t
 def _resolve_requested_single_month_bucket(df: Any, *, date_column: str | None, chat_text: str) -> str | None:
     if not date_column:
         return None
+    available = sorted(_available_month_buckets(df, date_column=date_column))
+    if not available:
+        return None
+
     explicit_literals = _extract_month_literals(chat_text)
     if len(explicit_literals) > 1:
         return None
@@ -156,9 +196,11 @@ def _resolve_requested_single_month_bucket(df: Any, *, date_column: str | None, 
     if len(month_numbers) > 1:
         return None
     if not month_numbers:
-        return None
-    available = _available_month_buckets(df, date_column=date_column)
-    if not available:
+        text = str(chat_text or "")
+        if _contains_any(text, ("上个月", "上月", "last month", "previous month")):
+            return available[-2] if len(available) >= 2 else None
+        if _contains_any(text, ("这个月", "本月", "current month", "this month")):
+            return available[-1]
         return None
     unique_years = sorted({item.split("-")[0] for item in available if "-" in item})
     month = month_numbers[0]
@@ -206,11 +248,78 @@ def _extract_date_literal(chat_text: str) -> str | None:
     return None
 
 
+def _extract_week_literal(chat_text: str) -> str | None:
+    text = str(chat_text or "")
+    matched = re.search(r"(\d{4})[-/年]?[Ww第]?\s*(\d{1,2})\s*(?:周|week|w)?", text)
+    if not matched:
+        return None
+    year = int(matched.group(1))
+    week = int(matched.group(2))
+    if not (1 <= week <= 53):
+        return None
+    return f"{year:04d}-W{week:02d}"
+
+
+def _previous_period_literal(value: str, *, grain: str, basis: str) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized_basis = str(basis or "").strip().lower()
+
+    if grain == "day":
+        matched = _extract_date_literal(text)
+        if not matched:
+            return None
+        year, month, day = [int(item) for item in matched.split("-")]
+        try:
+            current = date(year, month, day)
+            previous = date(year - 1, month, day) if normalized_basis == "year_over_year" else current - timedelta(days=1)
+            return previous.isoformat()
+        except Exception:
+            return None
+
+    if grain == "week":
+        matched = _extract_week_literal(text)
+        if not matched:
+            return None
+        week_match = re.search(r"(\d{4})-W(\d{2})", matched)
+        if not week_match:
+            return None
+        year = int(week_match.group(1))
+        week = int(week_match.group(2))
+        if normalized_basis == "year_over_year":
+            return f"{year - 1:04d}-W{week:02d}"
+        week -= 1
+        if week >= 1:
+            return f"{year:04d}-W{week:02d}"
+        return f"{year - 1:04d}-W52"
+
+    if grain == "month":
+        matched = _extract_month_literal(text)
+        if not matched:
+            return None
+        year, month = [int(item) for item in matched.split("-")]
+        if normalized_basis == "year_over_year":
+            return f"{year - 1:04d}-{month:02d}"
+        month -= 1
+        if month >= 1:
+            return f"{year:04d}-{month:02d}"
+        return f"{year - 1:04d}-12"
+
+    return None
+
+
 def _extract_time_grain(chat_text: str, default: str = "month") -> str:
     text = str(chat_text or "").lower()
-    if _contains_any(text, ("按天", "每天", "日报", "daily", "per day", "day trend")):
+    if _extract_recent_period_count(text, grain="day"):
         return "day"
-    if _contains_any(text, ("按周", "每周", "weekly", "per week")):
+    if _extract_recent_period_count(text, grain="week"):
+        return "week"
+    if _extract_recent_period_count(text, grain="month"):
+        return "month"
+    if _contains_any(text, ("按天", "每天", "日报", "日度", "daily", "per day", "day trend", "daily trend")):
+        return "day"
+    if _contains_any(text, ("按周", "每周", "周度", "weekly", "per week", "week trend", "weekly trend", "按星期", "每星期")):
         return "week"
     if _contains_any(text, ("按季度", "每季度", "quarterly", "per quarter")):
         return "quarter"
@@ -218,9 +327,35 @@ def _extract_time_grain(chat_text: str, default: str = "month") -> str:
         return "weekpart"
     if _contains_any(text, ("星期", "周几", "weekday")):
         return "weekday"
-    if _contains_any(text, ("按月", "每月", "monthly", "per month", "month trend", "月份", "趋势")):
+    if _contains_any(text, ("按月", "每月", "月度", "monthly", "per month", "month trend", "monthly trend", "月份", "趋势")):
         return "month"
     return default
+
+
+def _extract_recent_period_count(chat_text: str, *, grain: str | None = None) -> int | None:
+    text = str(chat_text or "")
+    lowered = text.lower()
+
+    for matched in re.finditer(r"(?:最近|近)\s*(\d{1,2}|[一二三四五六七八九十两]{1,3})\s*(天|日|周|星期|个?月)", text):
+        raw_count = matched.group(1)
+        unit = matched.group(2)
+        count = _parse_chinese_small_number(raw_count)
+        if count is None:
+            continue
+        unit_grain = "month" if "月" in unit else "week" if unit in {"周", "星期"} else "day"
+        if grain and unit_grain != grain:
+            continue
+        return count
+
+    for matched in re.finditer(r"\b(?:last|past|recent)\s+(\d{1,2})\s*(days?|weeks?|months?)\b", lowered):
+        count = int(matched.group(1))
+        unit = matched.group(2)
+        unit_grain = "month" if unit.startswith("month") else "week" if unit.startswith("week") else "day"
+        if grain and unit_grain != grain:
+            continue
+        return count
+
+    return None
 
 
 def _available_time_buckets(df: Any, *, date_column: str, grain: str) -> list[str]:
@@ -243,6 +378,15 @@ def _available_time_buckets(df: Any, *, date_column: str, grain: str) -> list[st
     else:
         return []
     return list(dict.fromkeys(str(value) for value in buckets if str(value or "").strip()))
+
+
+def _resolve_recent_period_buckets(df: Any, *, date_column: str, grain: str, count: int) -> list[str]:
+    if count <= 0:
+        return []
+    available = sorted(_available_time_buckets(df, date_column=date_column, grain=grain))
+    if not available:
+        return []
+    return available[-count:]
 
 
 def _next_period_literal(current: str, *, grain: str, steps: int = 1) -> str | None:

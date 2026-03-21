@@ -40,6 +40,16 @@ export interface UiMessages {
   modeTextLabel: string;
   modeChartLabel: string;
   clarificationSelectedLabel: string;
+  followupLabel: string;
+  followupSuggestionSwitchToChart: string;
+  followupSuggestionSwitchToText: string;
+  followupSuggestionRefineTop3: string;
+  followupSuggestionAskTrend: string;
+  followupSuggestionRecentThreePeriods: string;
+  followupSuggestionComparePreviousPeriod: string;
+  followupSuggestionAggregateByCategory: string;
+  followupSuggestionForecastNextMonth: string;
+  followupSuggestionSummarizeOneLine: string;
   send: string;
   stop: string;
   thinking: string;
@@ -63,6 +73,9 @@ export interface UiMessages {
   routingMethodFollowupLabel: string;
   routingMethodAutoLabel: string;
   routingMethodRequestedLabel: string;
+  filterSummaryLabel: string;
+  topKSummaryLabel: string;
+  trendGrainLabel: string;
   conclusionLabel: string;
   evidenceLabel: string;
   riskNoteLabel: string;
@@ -76,6 +89,7 @@ export interface UiMessages {
   selectionPlanLabel: string;
   transformPlanLabel: string;
   detailRowsLabel: string;
+  evidenceTableLabel: string;
   resultTableLabel: string;
   forecastLabel: string;
   forecastBadgeLabel: string;
@@ -93,7 +107,17 @@ export interface UiMessages {
   forecastGrainDayLabel: string;
   forecastGrainWeekLabel: string;
   forecastGrainMonthLabel: string;
+  compareLabel: string;
+  compareBasisLabel: string;
+  compareCurrentLabel: string;
+  compareBaseLabel: string;
+  compareChangeValueLabel: string;
+  compareChangePctLabel: string;
+  compareRatioLabel: string;
+  compareBasisMomLabel: string;
+  compareBasisYoyLabel: string;
   chartLabel: string;
+  chartPointCountLabel: string;
   noChartData: string;
   copyAnswerLabel: string;
   copyAnswerDoneLabel: string;
@@ -157,6 +181,16 @@ export const messages: Record<Locale, UiMessages> = {
     modeTextLabel: "Text",
     modeChartLabel: "Chart",
     clarificationSelectedLabel: "Confirmed column",
+    followupLabel: "Continue with",
+    followupSuggestionSwitchToChart: "Render this result as a chart.",
+    followupSuggestionSwitchToText: "Summarize this result in text only.",
+    followupSuggestionRefineTop3: "Keep the same scope but limit to Top 3.",
+    followupSuggestionAskTrend: "Show the trend for this metric by month.",
+    followupSuggestionRecentThreePeriods: "Focus on the most recent 3 periods.",
+    followupSuggestionComparePreviousPeriod: "Compare the latest period with the previous one.",
+    followupSuggestionAggregateByCategory: "Group these rows by category and rank by total.",
+    followupSuggestionForecastNextMonth: "Forecast the next period based on this trend.",
+    followupSuggestionSummarizeOneLine: "Give a one-line summary of the key finding.",
     send: "Send",
     stop: "Stop",
     thinking: "Analyzing the active sheet...",
@@ -180,6 +214,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "Previous turn context",
     routingMethodAutoLabel: "Workbook auto-routing",
     routingMethodRequestedLabel: "Requested sheet fallback",
+    filterSummaryLabel: "Applied filters",
+    topKSummaryLabel: "Top K",
+    trendGrainLabel: "Trend grain",
     conclusionLabel: "Conclusion",
     evidenceLabel: "Evidence",
     riskNoteLabel: "Risk note",
@@ -193,6 +230,7 @@ export const messages: Record<Locale, UiMessages> = {
     selectionPlanLabel: "Selection plan",
     transformPlanLabel: "Transform plan",
     detailRowsLabel: "Detail rows",
+    evidenceTableLabel: "Evidence table",
     resultTableLabel: "Result table",
     forecastLabel: "Forecast",
     forecastBadgeLabel: "Model estimate",
@@ -210,7 +248,17 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainDayLabel: "Day",
     forecastGrainWeekLabel: "Week",
     forecastGrainMonthLabel: "Month",
+    compareLabel: "Period comparison",
+    compareBasisLabel: "Basis",
+    compareCurrentLabel: "Current period",
+    compareBaseLabel: "Base period",
+    compareChangeValueLabel: "Change value",
+    compareChangePctLabel: "Change %",
+    compareRatioLabel: "Ratio",
+    compareBasisMomLabel: "Previous period",
+    compareBasisYoyLabel: "Year over year",
     chartLabel: "Chart output",
+    chartPointCountLabel: "Points",
     noChartData: "No chart data returned for this answer.",
     copyAnswerLabel: "Copy answer",
     copyAnswerDoneLabel: "Copied",
@@ -301,6 +349,16 @@ export const messages: Record<Locale, UiMessages> = {
     modeTextLabel: "文本",
     modeChartLabel: "图表",
     clarificationSelectedLabel: "已确认字段",
+    followupLabel: "继续问",
+    followupSuggestionSwitchToChart: "把这个结果改成图表展示。",
+    followupSuggestionSwitchToText: "把这个结果改成纯文字结论。",
+    followupSuggestionRefineTop3: "保持当前口径，只看前 3 个。",
+    followupSuggestionAskTrend: "按月看这个指标的趋势。",
+    followupSuggestionRecentThreePeriods: "只看最近 3 个周期。",
+    followupSuggestionComparePreviousPeriod: "对比最近一期和上一期的变化。",
+    followupSuggestionAggregateByCategory: "把这些明细按类别汇总并做排名。",
+    followupSuggestionForecastNextMonth: "基于这条趋势预测下一个周期。",
+    followupSuggestionSummarizeOneLine: "用一句话总结最关键结论。",
     send: "发送",
     stop: "停止",
     thinking: "正在分析当前工作表...",
@@ -324,6 +382,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "沿用上一轮上下文",
     routingMethodAutoLabel: "工作簿自动路由",
     routingMethodRequestedLabel: "按请求 sheet 兜底",
+    filterSummaryLabel: "筛选条件",
+    topKSummaryLabel: "Top K 口径",
+    trendGrainLabel: "趋势粒度",
     conclusionLabel: "结论",
     evidenceLabel: "依据",
     riskNoteLabel: "风险提示",
@@ -337,6 +398,7 @@ export const messages: Record<Locale, UiMessages> = {
     selectionPlanLabel: "选择计划",
     transformPlanLabel: "转换计划",
     detailRowsLabel: "明细数据",
+    evidenceTableLabel: "证据表",
     resultTableLabel: "结果表格",
     forecastLabel: "预测结果",
     forecastBadgeLabel: "模型估计",
@@ -354,7 +416,17 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainDayLabel: "日",
     forecastGrainWeekLabel: "周",
     forecastGrainMonthLabel: "月",
+    compareLabel: "周期对比",
+    compareBasisLabel: "对比口径",
+    compareCurrentLabel: "当前周期",
+    compareBaseLabel: "基准周期",
+    compareChangeValueLabel: "变化值",
+    compareChangePctLabel: "变化率",
+    compareRatioLabel: "倍数",
+    compareBasisMomLabel: "环比",
+    compareBasisYoyLabel: "同比",
     chartLabel: "图表结果",
+    chartPointCountLabel: "点数",
     noChartData: "当前回答未返回图表数据。",
     copyAnswerLabel: "复制回答",
     copyAnswerDoneLabel: "已复制",
@@ -445,6 +517,16 @@ export const messages: Record<Locale, UiMessages> = {
     modeTextLabel: "テキスト",
     modeChartLabel: "チャート",
     clarificationSelectedLabel: "確認した列",
+    followupLabel: "続けて質問",
+    followupSuggestionSwitchToChart: "この結果をチャート表示に切り替える。",
+    followupSuggestionSwitchToText: "この結果をテキスト要約に切り替える。",
+    followupSuggestionRefineTop3: "同じ条件のまま Top 3 に絞る。",
+    followupSuggestionAskTrend: "この指標の月次トレンドを表示する。",
+    followupSuggestionRecentThreePeriods: "直近 3 期間に絞って確認する。",
+    followupSuggestionComparePreviousPeriod: "最新期間と前期間を比較する。",
+    followupSuggestionAggregateByCategory: "この明細をカテゴリ別に集計して順位を出す。",
+    followupSuggestionForecastNextMonth: "このトレンドをもとに次期間を予測する。",
+    followupSuggestionSummarizeOneLine: "重要な結論を 1 行で要約する。",
     send: "送信",
     stop: "停止",
     thinking: "アクティブシートを分析中...",
@@ -468,6 +550,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "前ターンの文脈",
     routingMethodAutoLabel: "ワークブック自動ルーティング",
     routingMethodRequestedLabel: "要求シートへのフォールバック",
+    filterSummaryLabel: "適用フィルター",
+    topKSummaryLabel: "Top K 条件",
+    trendGrainLabel: "トレンド粒度",
     conclusionLabel: "結論",
     evidenceLabel: "根拠",
     riskNoteLabel: "注意点",
@@ -481,6 +566,7 @@ export const messages: Record<Locale, UiMessages> = {
     selectionPlanLabel: "選択プラン",
     transformPlanLabel: "変換プラン",
     detailRowsLabel: "詳細行",
+    evidenceTableLabel: "根拠テーブル",
     resultTableLabel: "結果テーブル",
     forecastLabel: "予測結果",
     forecastBadgeLabel: "モデル推定",
@@ -498,7 +584,17 @@ export const messages: Record<Locale, UiMessages> = {
     forecastGrainDayLabel: "日",
     forecastGrainWeekLabel: "週",
     forecastGrainMonthLabel: "月",
+    compareLabel: "期間比較",
+    compareBasisLabel: "比較基準",
+    compareCurrentLabel: "現在期間",
+    compareBaseLabel: "基準期間",
+    compareChangeValueLabel: "変化量",
+    compareChangePctLabel: "変化率",
+    compareRatioLabel: "比率",
+    compareBasisMomLabel: "前期比",
+    compareBasisYoyLabel: "前年比",
     chartLabel: "チャート出力",
+    chartPointCountLabel: "点数",
     noChartData: "この回答ではチャートデータが返されませんでした。",
     copyAnswerLabel: "回答をコピー",
     copyAnswerDoneLabel: "コピー済み",

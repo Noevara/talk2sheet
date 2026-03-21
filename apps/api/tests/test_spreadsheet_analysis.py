@@ -139,6 +139,12 @@ def test_analyze_builds_ranking_chart_pipeline() -> None:
     assert result.pipeline["planner"]["intent"] == "ranking"
     assert result.pipeline["planner"]["analysis_intent"]["kind"] == "ranking"
     assert result.pipeline["planner"]["analysis_intent"]["answer_expectation"] == "chart"
+    assert result.pipeline["planner"]["chart_context"]["x_label"] == "Category"
+    assert result.pipeline["chart_context"]["x_label"] == "Category"
+    assert result.pipeline["chart_context"]["y_label"] == "value"
+    assert result.pipeline["chart_context"]["y_unit"] == result.pipeline["planner"]["chart_context"]["y_unit"]
+    assert result.pipeline["chart_context"]["point_count"] == 2
+    assert result.pipeline["answer_generation"]["chart_context"]["x_label"] == "Category"
     assert result.pipeline["exact_execution"]["eligible"] is True
     assert result.execution_disclosure.exact_used is True
 
@@ -215,6 +221,12 @@ def test_analyze_detail_rows_includes_preview_rows() -> None:
 
     assert result.pipeline["planner"]["intent"] == "detail_rows"
     assert len(result.pipeline["preview_rows"]) == 2
+    answer_meta = result.pipeline["answer_generation"]
+    assert answer_meta["summary_kind"] == "detail"
+    assert answer_meta["summary_source"] == "rule_based_detail_summary"
+    assert answer_meta["detail_source"] == "result_df_rows"
+    assert answer_meta["detail_row_count"] == 2
+    assert answer_meta["segments"]["conclusion"] == result.answer
 
 
 def test_analyze_single_transaction_top_n_returns_detail_rows() -> None:
@@ -247,6 +259,27 @@ def test_analyze_single_transaction_top_n_supports_chart() -> None:
     assert result.chart_spec["type"] == "bar"
     assert result.chart_spec["x"] == "Transaction ID"
     assert len(result.chart_data or []) == 2
+
+
+def test_analyze_downgrades_to_text_when_scatter_chart_is_not_renderable() -> None:
+    result = analyze(
+        _sample_df(),
+        chat_text="Show the top 2 categories by amount as a scatter chart.",
+        requested_mode="chart",
+        locale="en",
+        rows_loaded=4,
+    )
+
+    assert result.mode == "chart"
+    assert result.chart_spec is None
+    assert result.pipeline["planner"]["intent"] == "ranking"
+    assert result.pipeline["chart_context"]["requested"] is True
+    assert result.pipeline["chart_context"]["rendered"] is False
+    assert result.pipeline["chart_context"]["requested_type"] == "scatter"
+    assert result.pipeline["chart_context"]["applied_type"] == "scatter"
+    assert "scatter x-axis should be numeric" in result.pipeline["chart_context"]["fallback_reason"].lower()
+    assert "chart output was downgraded to text" in result.execution_disclosure.fallback_reason.lower()
+    assert "chart output was downgraded to text" in result.pipeline["answer_generation"]["segments"]["risk_note"].lower()
 
 
 def test_service_ranking_prefers_service_dimension_from_question() -> None:
@@ -414,6 +447,41 @@ def test_month_day_count_question_counts_distinct_days_with_compact_dates() -> N
         {"col": "账单日期", "op": "<", "value": "2026-04-01"},
     ]
     assert "2026-03 共有 3 天有数据" in result.answer
+
+
+def test_direct_trend_question_can_apply_day_grain_with_last_month_filter() -> None:
+    result = analyze(
+        _sample_df(),
+        chat_text="按天看上月趋势",
+        requested_mode="auto",
+        locale="zh-CN",
+        rows_loaded=4,
+    )
+
+    assert result.pipeline["planner"]["intent"] == "trend"
+    assert result.pipeline["planner"]["bucket_grain"] == "day"
+    assert result.pipeline["planner"]["requested_period"] == "2025-01"
+    assert result.pipeline["selection_plan"]["filters"] == [
+        {"col": "Date", "op": ">=", "value": "2025-01-01"},
+        {"col": "Date", "op": "<", "value": "2025-02-01"},
+    ]
+    assert result.pipeline["result_columns"] == ["day_bucket", "value"]
+
+
+def test_direct_trend_question_can_apply_recent_month_window() -> None:
+    result = analyze(
+        _sample_df(),
+        chat_text="看最近2个月趋势",
+        requested_mode="auto",
+        locale="zh-CN",
+        rows_loaded=4,
+    )
+
+    assert result.pipeline["planner"]["intent"] == "trend"
+    assert result.pipeline["planner"]["requested_recent_period_count"] == 2
+    assert result.pipeline["planner"]["requested_recent_periods"] == ["2025-01", "2025-02"]
+    assert result.pipeline["transform_plan"]["having"] == [{"col": "month_bucket", "op": "in", "value": ["2025-01", "2025-02"]}]
+    assert result.pipeline["result_columns"] == ["month_bucket", "value"]
 
 
 def test_single_month_total_amount_question_uses_month_range_for_compact_dates() -> None:
@@ -762,6 +830,76 @@ def test_followup_can_lookup_last_ranked_item_from_previous_ranking() -> None:
     assert result.pipeline["planner"]["rank_position"] == -1
     assert "Storage" in result.answer
     assert "80" in result.answer
+
+
+def test_direct_question_can_compare_latest_month_with_previous_month() -> None:
+    result = analyze(
+        _monthly_region_df(),
+        chat_text="对比上个月总金额变化",
+        requested_mode="auto",
+        locale="zh-CN",
+        rows_loaded=4,
+    )
+
+    assert result.mode == "text"
+    assert result.pipeline["planner"]["intent"] == "period_compare"
+    assert result.pipeline["planner"]["compare_basis"] == "previous_period"
+    assert result.pipeline["planner"]["comparison_type"] == "delta"
+    assert result.pipeline["planner"]["current_period"] == "2025-02"
+    assert result.pipeline["planner"]["previous_period"] == "2025-01"
+    assert result.pipeline["planner"]["analysis_intent"]["comparison_type"] == "delta"
+    assert result.pipeline["planner"]["analysis_intent"]["time_scope"]["base_period"] == "2025-01"
+    assert result.pipeline["result_columns"] == ["2025-01", "2025-02", "change_value", "change_pct"]
+    assert "2025-02" in result.answer
+    assert "25" in result.answer
+
+
+def test_direct_question_can_compare_year_over_year_ratio() -> None:
+    df = attach_column_profiles(
+        pd.DataFrame(
+            {
+                "Region": ["West", "West", "West"],
+                "Month": ["2024-02", "2025-01", "2025-02"],
+                "Amount": [45, 40, 60],
+            }
+        )
+    )
+    result = analyze(
+        df,
+        chat_text="同比占比是多少",
+        requested_mode="auto",
+        locale="zh-CN",
+        rows_loaded=3,
+    )
+
+    assert result.mode == "text"
+    assert result.pipeline["planner"]["intent"] == "period_compare"
+    assert result.pipeline["planner"]["compare_basis"] == "year_over_year"
+    assert result.pipeline["planner"]["comparison_type"] == "ratio"
+    assert result.pipeline["planner"]["current_period"] == "2025-02"
+    assert result.pipeline["planner"]["previous_period"] == "2024-02"
+    assert result.pipeline["planner"]["analysis_intent"]["comparison_type"] == "ratio"
+    assert result.pipeline["result_columns"] == ["2024-02", "2025-02", "change_value", "change_pct", "compare_ratio"]
+    assert "1.333x" in result.answer
+
+
+def test_direct_question_can_apply_value_filter_with_groupby_topk() -> None:
+    result = analyze(
+        _billing_df(),
+        chat_text="只看 cn-sh，按服务统计费用前2",
+        requested_mode="auto",
+        locale="zh-CN",
+        rows_loaded=5,
+    )
+
+    assert result.mode == "text"
+    assert result.pipeline["planner"]["intent"] == "ranking"
+    assert result.pipeline["planner"]["top_k"] == 2
+    assert result.pipeline["planner"]["value_filters"] == [{"column": "Region", "value": "cn-sh"}]
+    assert result.pipeline["selection_plan"]["filters"] == [{"col": "Region", "op": "=", "value": "cn-sh"}]
+    assert result.pipeline["result_columns"] == ["Service Name", "value"]
+    assert result.pipeline["result_row_count"] == 1
+    assert "Compute" in result.answer
 
 
 def test_followup_can_compare_current_month_with_previous_month() -> None:

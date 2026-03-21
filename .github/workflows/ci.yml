@@ -44,6 +44,38 @@ jobs:
       - name: Run API tests
         run: cd apps/api && pytest -q
 
+  intent-regression:
+    name: Intent Regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install API dependencies
+        run: pip install -e "apps/api[dev]"
+
+      - name: Run intent regression eval
+        id: intent_eval
+        continue-on-error: true
+        run: python apps/api/scripts/eval_intent_cases.py
+
+      - name: Upload intent failure snapshot
+        if: steps.intent_eval.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: intent-regression-failure-snapshot
+          path: apps/api/.artifacts/intent_regression_failure_snapshot.json
+          if-no-files-found: ignore
+
+      - name: Fail job on intent regression mismatch
+        if: steps.intent_eval.outcome == 'failure'
+        run: exit 1
+
   web:
     name: Web
     runs-on: ubuntu-latest

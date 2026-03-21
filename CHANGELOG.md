@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.2.0
+
+Single-sheet analysis depth release with stronger intent handling, richer answer structure, and cleaner quality gates.
+
+### Highlights
+
+- Added direct period comparison support for month-over-month / year-over-year questions, including delta and ratio outputs
+- Added stronger filter + groupby + Top N planning coverage from natural-language value constraints
+- Added day/week/month trend grain handling, recent-N period windows, and relative month trend filters
+- Upgraded result cards to structured conclusion/evidence/risk output with better compare/trend/detail presentation
+- Added chart recommendation and chart-context alignment across planner, runtime pipeline, and frontend cards
+- Added chart downgrade visibility so chart-mode failures still return explainable text results
+- Added frontend “continue asking” loop from result cards to composer prefill
+- Added intent regression corpus, offline evaluator, CI layering, and failure snapshot artifact upload
+
+### Current Scope
+
+- Workbook-aware single-sheet routing and analysis
+- Row count, totals, averages, distinct count
+- Period compare, ranking, share, detail rows, trend, basic charts, lightweight forecast
+- Clarification and follow-up conversation
+- Structured pipeline visibility and request-level debugging identifiers
+
+### Out of Scope
+
+- Cross-sheet joins and combined multi-sheet analysis
+- Advanced statistics and causal inference
+- Production-ready object storage and persistent session backends
+
+### Validation
+
+- `make ci-check`
+- `python apps/api/scripts/eval_intent_cases.py`
+
 ## v0.1.1
 
 Usability, observability, and release-hardening update for the first public version line.

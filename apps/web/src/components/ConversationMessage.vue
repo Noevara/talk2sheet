@@ -16,6 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   clarificationSelect: [value: string];
+  followupSelect: [question: string];
 }>();
 
 const copyState = ref<"idle" | "done">("idle");
@@ -101,6 +102,83 @@ const selectionPlan = computed(() => {
 const transformPlan = computed(() => {
   return props.message.pipeline?.transform_plan ?? null;
 });
+
+function formatFilterSummary(filters: Array<{ col?: unknown; op?: unknown; value?: unknown }>): string {
+  const parts = filters
+    .map((filter) => {
+      const col = readString(filter.col);
+      const op = readString(filter.op);
+      const value = formatDisplayValue(filter.value);
+      if (!col) {
+        return "";
+      }
+      if (!op) {
+        return `${col} = ${value}`;
+      }
+      return `${col} ${op} ${value}`;
+    })
+    .filter((item) => item);
+  return parts.join(" · ");
+}
+
+const analysisSummaryMeta = computed(() => {
+  const planner = plannerMeta.value;
+  const selection = asRecord(selectionPlan.value);
+  const transform = asRecord(transformPlan.value);
+  const plannerIntent = readString(planner?.intent);
+
+  const plannerValueFilters = Array.isArray(planner?.value_filters)
+    ? (planner?.value_filters as unknown[])
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+        .map((item) => ({ col: item.column, op: "=", value: item.value }))
+    : [];
+  const selectionFilters = Array.isArray(selection?.filters)
+    ? (selection?.filters as unknown[])
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+    : [];
+  const filters = plannerValueFilters.length ? plannerValueFilters : selectionFilters;
+  const filtersText = filters.length ? formatFilterSummary(filters as Array<{ col?: unknown; op?: unknown; value?: unknown }>) : "";
+
+  const transformTopK = readNumber(transform?.top_k);
+  const plannerTopK = readNumber(planner?.top_k);
+  const topK = transformTopK ?? plannerTopK;
+
+  let trendGrain = "";
+  if (plannerIntent === "trend") {
+    trendGrain = readString(planner?.bucket_grain);
+    if (!trendGrain && Array.isArray(transform?.derived_columns)) {
+      const firstDerived = asRecord(transform.derived_columns[0]);
+      trendGrain = readString(firstDerived?.grain);
+    }
+  }
+  const trendGrainText = trendGrain ? forecastGrainLabel(trendGrain) : "";
+
+  if (!filtersText && !topK && !trendGrainText) {
+    return null;
+  }
+
+  return {
+    filtersText,
+    topK: topK ? String(topK) : "",
+    trendGrainText,
+  };
+});
+
+function uniquePrompts(candidates: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = candidate.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
+}
 
 const plannerMeta = computed(() => asRecord(props.message.pipeline?.planner));
 const answerGenerationMeta = computed(() => asRecord(props.message.pipeline?.answer_generation));
@@ -189,9 +267,56 @@ const forecastMeta = computed(() => {
   };
 });
 
+function compareBasisLabel(basis: string): string {
+  const normalized = basis.trim().toLowerCase();
+  if (normalized === "year_over_year") {
+    return props.ui.compareBasisYoyLabel;
+  }
+  return props.ui.compareBasisMomLabel;
+}
+
+const periodCompareMeta = computed(() => {
+  const planner = plannerMeta.value;
+  const answerMeta = answerGenerationMeta.value;
+  const summaryKind = readString(answerMeta?.summary_kind);
+  const intent = readString(planner?.intent);
+  const isPeriodCompare = props.message.role === "assistant" && (summaryKind === "period_compare" || intent === "period_compare");
+  if (!isPeriodCompare) {
+    return null;
+  }
+
+  const currentPeriod = readString(answerMeta?.current_period) || readString(planner?.current_period);
+  const previousPeriod = readString(answerMeta?.previous_period) || readString(planner?.previous_period);
+  const currentValue = readString(answerMeta?.current_value);
+  const previousValue = readString(answerMeta?.previous_value);
+  const changeValue = readString(answerMeta?.change_value);
+  const changePct = readString(answerMeta?.change_pct);
+  const ratioValue = readString(answerMeta?.compare_ratio);
+  const compareBasis = readString(answerMeta?.compare_basis) || readString(planner?.compare_basis) || "previous_period";
+
+  if (!currentPeriod || !previousPeriod) {
+    return null;
+  }
+
+  return {
+    currentPeriod,
+    previousPeriod,
+    currentValue: currentValue || "—",
+    previousValue: previousValue || "—",
+    changeValue: changeValue || "—",
+    changePct: changePct || "—",
+    ratioValue: ratioValue || "—",
+    basisLabel: compareBasisLabel(compareBasis),
+  };
+});
+
 const detailTableLabel = computed(() => {
   if (forecastMeta.value) {
     return props.ui.forecastTableLabel;
+  }
+  const summaryKind = readString(answerGenerationMeta.value?.summary_kind);
+  if (summaryKind === "detail") {
+    return props.ui.evidenceTableLabel;
   }
   const isDetailRows = Boolean((transformPlan.value as { return_rows?: boolean } | null)?.return_rows);
   return isDetailRows ? props.ui.detailRowsLabel : props.ui.resultTableLabel;
@@ -245,6 +370,42 @@ const chartExportFilename = computed(() => {
   return resolvedSheetIndex
     ? `talk2sheet-sheet-${resolvedSheetIndex}-${chartType}.png`
     : `talk2sheet-${chartType}.png`;
+});
+
+const chartContextMeta = computed(() => {
+  const raw = asRecord(props.message.pipeline?.chart_context);
+  if (!raw) {
+    return null;
+  }
+  const title = readString(raw.title);
+  const xLabel = readString(raw.x_label);
+  const yLabel = readString(raw.y_label);
+  const yUnit = readString(raw.y_unit);
+  const pointCount = readNumber(raw.point_count);
+  const fallbackReason = readString(raw.fallback_reason);
+  const rendered = raw.rendered === true;
+  const requested = raw.requested === true;
+  if (!requested && !title && !xLabel && !yLabel && !fallbackReason) {
+    return null;
+  }
+  return {
+    title,
+    xLabel,
+    yLabel,
+    yUnit,
+    pointCount,
+    fallbackReason,
+    rendered,
+    requested,
+  };
+});
+
+const chartFallbackNote = computed(() => {
+  const context = chartContextMeta.value;
+  if (!context || !context.requested || context.rendered) {
+    return "";
+  }
+  return context.fallbackReason;
 });
 
 const answerSegments = computed<AnswerSegments | null>(() => {
@@ -359,6 +520,44 @@ const sheetRoutingMeta = computed(() => {
   };
 });
 
+const followupSuggestions = computed(() => {
+  if (props.message.role !== "assistant" || props.message.status === "streaming" || Boolean(clarification.value)) {
+    return [];
+  }
+  const planner = plannerMeta.value;
+  const answerMeta = answerGenerationMeta.value;
+  const intent = readString(planner?.intent) || readString(answerMeta?.summary_kind);
+  const hasChart = Boolean(props.message.chartSpec);
+
+  const candidates: string[] = [];
+  if (!hasChart) {
+    candidates.push(props.ui.followupSuggestionSwitchToChart);
+  } else {
+    candidates.push(props.ui.followupSuggestionSwitchToText);
+  }
+
+  if (intent === "ranking" || intent === "share") {
+    candidates.push(props.ui.followupSuggestionRefineTop3);
+    candidates.push(props.ui.followupSuggestionAskTrend);
+  } else if (intent === "trend") {
+    candidates.push(props.ui.followupSuggestionRecentThreePeriods);
+    candidates.push(props.ui.followupSuggestionComparePreviousPeriod);
+  } else if (intent === "period_compare") {
+    candidates.push(props.ui.followupSuggestionAskTrend);
+    candidates.push(props.ui.followupSuggestionComparePreviousPeriod);
+  } else if (intent === "detail_rows" || intent === "detail") {
+    candidates.push(props.ui.followupSuggestionAggregateByCategory);
+    candidates.push(props.ui.followupSuggestionRefineTop3);
+  } else if (intent === "forecast_timeseries") {
+    candidates.push(props.ui.followupSuggestionForecastNextMonth);
+    candidates.push(props.ui.followupSuggestionRecentThreePeriods);
+  } else {
+    candidates.push(props.ui.followupSuggestionSummarizeOneLine);
+  }
+
+  return uniquePrompts(candidates).slice(0, 3);
+});
+
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
@@ -427,6 +626,38 @@ async function handleExportChart(): Promise<void> {
 
     <template v-if="message.role === 'assistant' && hasStructuredAnswer">
       <div class="answer-stack">
+        <div v-if="periodCompareMeta" class="compare-panel">
+          <div class="compare-head">
+            <div class="answer-label compare-label">{{ ui.compareLabel }}</div>
+            <span class="compare-badge">{{ periodCompareMeta.basisLabel }}</span>
+          </div>
+
+          <div class="compare-grid">
+            <div class="compare-card compare-card-primary">
+              <span class="compare-card-label">{{ ui.compareCurrentLabel }}</span>
+              <strong>{{ periodCompareMeta.currentValue }}</strong>
+              <small>{{ periodCompareMeta.currentPeriod }}</small>
+            </div>
+
+            <div class="compare-card">
+              <span class="compare-card-label">{{ ui.compareBaseLabel }}</span>
+              <strong>{{ periodCompareMeta.previousValue }}</strong>
+              <small>{{ periodCompareMeta.previousPeriod }}</small>
+            </div>
+
+            <div class="compare-card">
+              <span class="compare-card-label">{{ ui.compareChangeValueLabel }}</span>
+              <strong>{{ periodCompareMeta.changeValue }}</strong>
+            </div>
+
+            <div class="compare-card">
+              <span class="compare-card-label">{{ ui.compareChangePctLabel }}</span>
+              <strong>{{ periodCompareMeta.changePct }}</strong>
+              <small>{{ ui.compareRatioLabel }} {{ periodCompareMeta.ratioValue }}</small>
+            </div>
+          </div>
+        </div>
+
         <div v-if="forecastMeta" class="forecast-panel">
           <div class="forecast-head">
             <div class="answer-label forecast-label">{{ ui.forecastLabel }}</div>
@@ -465,7 +696,7 @@ async function handleExportChart(): Promise<void> {
           </div>
         </div>
 
-        <div class="answer-block">
+        <div class="answer-block answer-block-conclusion">
           <div class="answer-label">{{ ui.conclusionLabel }}</div>
           <p class="message-text">{{ structuredConclusion }}</p>
         </div>
@@ -494,6 +725,21 @@ async function handleExportChart(): Promise<void> {
       </button>
     </div>
 
+    <div v-if="message.role === 'assistant' && followupSuggestions.length" class="message-followup">
+      <div class="section-label">{{ ui.followupLabel }}</div>
+      <div class="followup-list">
+        <button
+          v-for="prompt in followupSuggestions"
+          :key="prompt"
+          type="button"
+          class="message-action message-action-secondary message-action-followup"
+          @click="emit('followupSelect', prompt)"
+        >
+          {{ prompt }}
+        </button>
+      </div>
+    </div>
+
     <div v-if="message.executionDisclosure" class="message-scope">
       <div class="scope-label">{{ ui.scopeLabel }}</div>
       <div class="scope-body">
@@ -520,6 +766,23 @@ async function handleExportChart(): Promise<void> {
         </div>
       </div>
       <div v-if="sheetRoutingMeta.changed" class="routing-note">{{ ui.routingChangedLabel }}</div>
+    </div>
+
+    <div v-if="message.role === 'assistant' && analysisSummaryMeta" class="message-analysis-summary">
+      <div class="summary-grid">
+        <div v-if="analysisSummaryMeta.filtersText" class="summary-item">
+          <span>{{ ui.filterSummaryLabel }}</span>
+          <strong>{{ analysisSummaryMeta.filtersText }}</strong>
+        </div>
+        <div v-if="analysisSummaryMeta.topK" class="summary-item">
+          <span>{{ ui.topKSummaryLabel }}</span>
+          <strong>{{ analysisSummaryMeta.topK }}</strong>
+        </div>
+        <div v-if="analysisSummaryMeta.trendGrainText" class="summary-item">
+          <span>{{ ui.trendGrainLabel }}</span>
+          <strong>{{ analysisSummaryMeta.trendGrainText }}</strong>
+        </div>
+      </div>
     </div>
 
     <ClarificationOptions
@@ -553,11 +816,26 @@ async function handleExportChart(): Promise<void> {
           {{ chartExportState === "done" ? ui.exportChartDoneLabel : ui.exportChartLabel }}
         </button>
       </div>
+      <div v-if="chartContextMeta && (chartContextMeta.title || chartContextMeta.xLabel || chartContextMeta.yLabel)" class="chart-context">
+        <div v-if="chartContextMeta.title" class="chart-context-title">{{ chartContextMeta.title }}</div>
+        <div v-if="chartContextMeta.xLabel || chartContextMeta.yLabel" class="chart-context-meta">
+          X: {{ chartContextMeta.xLabel || "—" }} · Y: {{ chartContextMeta.yLabel || "—" }}
+          <span v-if="chartContextMeta.yUnit"> ({{ chartContextMeta.yUnit }})</span>
+        </div>
+        <div v-if="chartContextMeta.pointCount !== null" class="chart-context-meta">
+          {{ ui.chartPointCountLabel }}: {{ chartContextMeta.pointCount }}
+        </div>
+      </div>
       <SimpleChart
         :spec="message.chartSpec"
         :data="message.chartData || []"
         :no-data-text="ui.noChartData"
       />
+    </div>
+
+    <div v-if="!message.chartSpec && chartFallbackNote" class="message-chart-fallback">
+      <div class="section-label">{{ ui.chartLabel }}</div>
+      <p class="message-secondary">{{ chartFallbackNote }}</p>
     </div>
 
     <div v-if="detailRows.length" class="message-detail-table">
@@ -643,6 +921,78 @@ async function handleExportChart(): Promise<void> {
   gap: 0.75rem;
 }
 
+.compare-panel {
+  border-radius: 20px;
+  padding: 0.95rem;
+  border: 1px solid rgba(200, 92, 60, 0.18);
+  background:
+    linear-gradient(180deg, rgba(200, 92, 60, 0.1), rgba(248, 242, 233, 0.72)),
+    rgba(255, 255, 255, 0.94);
+}
+
+.compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.compare-label {
+  margin-bottom: 0;
+}
+
+.compare-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  background: rgba(200, 92, 60, 0.14);
+  color: #c85c3c;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.compare-card {
+  display: grid;
+  gap: 0.22rem;
+  border-radius: 16px;
+  padding: 0.78rem 0.82rem;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(18, 41, 74, 0.08);
+}
+
+.compare-card-primary {
+  background: rgba(200, 92, 60, 0.12);
+  border-color: rgba(200, 92, 60, 0.2);
+}
+
+.compare-card-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(23, 50, 84, 0.54);
+}
+
+.compare-card strong {
+  color: #173254;
+  font-size: 1.08rem;
+  line-height: 1.35;
+}
+
+.compare-card small {
+  color: rgba(23, 50, 84, 0.68);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
 .forecast-panel {
   border-radius: 20px;
   padding: 0.95rem;
@@ -724,10 +1074,21 @@ async function handleExportChart(): Promise<void> {
   border-radius: 18px;
   padding: 0.8rem 0.9rem;
   background: rgba(18, 41, 74, 0.035);
+  border: 1px solid rgba(18, 41, 74, 0.08);
+}
+
+.answer-block-conclusion {
+  background: linear-gradient(180deg, rgba(29, 95, 133, 0.1), rgba(18, 41, 74, 0.02));
+  border-color: rgba(29, 95, 133, 0.22);
+}
+
+.answer-block-conclusion .message-text {
+  font-weight: 600;
 }
 
 .answer-block-secondary {
   background: rgba(29, 95, 133, 0.075);
+  border-color: rgba(29, 95, 133, 0.16);
 }
 
 .answer-block-risk {
@@ -757,8 +1118,11 @@ async function handleExportChart(): Promise<void> {
 
 .message-scope,
 .message-routing,
+.message-analysis-summary,
+.message-followup,
 .message-meta,
 .message-chart,
+.message-chart-fallback,
 .message-detail-table,
 .pipeline-block {
   margin-top: 1rem;
@@ -802,6 +1166,23 @@ async function handleExportChart(): Promise<void> {
   color: #173254;
 }
 
+.message-followup .section-label {
+  margin-bottom: 0.45rem;
+}
+
+.followup-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.message-action-followup {
+  border-radius: 14px;
+  padding: 0.34rem 0.62rem;
+  font-size: 0.77rem;
+  font-weight: 500;
+}
+
 .scope-label,
 .meta-label,
 .section-label {
@@ -814,6 +1195,25 @@ async function handleExportChart(): Promise<void> {
 
 .section-head .section-label {
   margin-bottom: 0;
+}
+
+.chart-context {
+  margin-bottom: 0.55rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.chart-context-title {
+  font-size: 0.86rem;
+  color: #173254;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.chart-context-meta {
+  font-size: 0.78rem;
+  color: rgba(23, 50, 84, 0.68);
+  line-height: 1.45;
 }
 
 .scope-body {
@@ -854,6 +1254,38 @@ async function handleExportChart(): Promise<void> {
 
 .routing-note {
   margin-top: 0.55rem;
+}
+
+.message-analysis-summary {
+  border-radius: 18px;
+  padding: 0.78rem 0.88rem;
+  border: 1px solid rgba(18, 41, 74, 0.1);
+  background: rgba(248, 242, 233, 0.52);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.summary-item {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.summary-item span {
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(23, 50, 84, 0.6);
+}
+
+.summary-item strong {
+  color: #173254;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .message-meta {
@@ -922,7 +1354,12 @@ async function handleExportChart(): Promise<void> {
 }
 
 @media (max-width: 720px) {
+  .compare-grid,
   .forecast-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-grid {
     grid-template-columns: 1fr;
   }
 

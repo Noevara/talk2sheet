@@ -64,6 +64,11 @@ def _assert_analysis_case(result, case: dict[str, object]) -> None:
         assert result.chart_spec is not None
         for key, value in case["expected_chart_spec"].items():
             assert result.chart_spec.get(key) == value
+    if isinstance(case.get("expected_chart_context"), dict):
+        context = result.pipeline.get("chart_context")
+        assert isinstance(context, dict)
+        for key, value in case["expected_chart_context"].items():
+            assert context.get(key) == value
 
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda case: str(case["id"]))
