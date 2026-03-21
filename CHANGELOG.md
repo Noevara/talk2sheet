@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.3.2 (2026-03-22)
+
+Batch workbook analysis release, focused on multi-sheet throughput, progress transparency, and batch usability.
+
+### Highlights
+
+- Added batch workbook APIs:
+  - `POST /api/spreadsheet/batch`
+  - `POST /api/spreadsheet/batch/stream`
+- Added per-sheet failure isolation (`status/error/reason_code`) so partial results remain available
+- Added real streaming progress and result events:
+  - `batch_progress`
+  - `batch_result`
+  - `batch_error`
+  - `batch_done`
+- Added configurable constrained parallel execution for batch runs (`TALK2SHEET_BATCH_MAX_PARALLEL`, default `1`, capped at `3`)
+- Added batch summary UI and CSV export in conversation cards
+- Added batch selection UX improvements:
+  - invert selection
+  - reuse recent selection
+  - recent selection hint
+- Added batch regression coverage, performance baseline script, and CI layered check with artifact upload
+
+### Current Scope
+
+- Workbook-aware routing and batch orchestration across selected sheets
+- Sheet-by-sheet execution within a single batch request
+- Real-time progress visibility and per-sheet result summary
+- Row count, totals, averages, ranking, detail rows, trend, compare, charts, lightweight forecast
+- Request-level and step-level observability
+
+### Out of Scope
+
+- Cross-sheet join execution in one step
+- Unrestricted combined multi-sheet analysis
+- Advanced statistics and causal inference
+- Production-ready object storage and persistent session backends
+
+### Validation
+
+- `pytest -q apps/api/tests/test_spreadsheet_batch_analysis.py apps/api/tests/test_spreadsheet_conversation.py apps/api/tests/test_spreadsheet_analysis.py`
+- `cd apps/web && npm run ci`
+- `python apps/api/scripts/check_contract_artifacts.py`
+
 ## v0.3.1 (2026-03-21)
 
 Sequential multi-sheet task-workflow completion release, focused on step visibility, scope stability, and step-level observability.
