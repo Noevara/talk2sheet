@@ -2,8 +2,8 @@ import { ref, type ComputedRef } from "vue";
 
 import type { UiMessages } from "../../../i18n/messages";
 import { formatChatError } from "../../../lib/errorMessages";
-import { streamSpreadsheetChat } from "../../../lib/api";
-import type { SpreadsheetChatRequest } from "../../../types";
+import { streamSpreadsheetChat, streamWorkbookBatchAnalysis } from "../../../lib/api";
+import type { SpreadsheetBatchRequest, SpreadsheetChatRequest } from "../../../types";
 
 export function useSseChat(options: { ui: ComputedRef<UiMessages> }) {
   const chatBusy = ref(false);
@@ -22,13 +22,46 @@ export function useSseChat(options: { ui: ComputedRef<UiMessages> }) {
       onMessage: (payload: Record<string, unknown>) => void;
     },
   ): Promise<{ aborted: boolean; errorMessage: string | null }> {
+    return runManagedStream(
+      (payload, options) => streamSpreadsheetChat(payload, options),
+      request,
+      handlers,
+    );
+  }
+
+  async function runBatchStream(
+    request: SpreadsheetBatchRequest,
+    handlers: {
+      onMessage: (payload: Record<string, unknown>) => void;
+    },
+  ): Promise<{ aborted: boolean; errorMessage: string | null }> {
+    return runManagedStream(
+      (payload, options) => streamWorkbookBatchAnalysis(payload, options),
+      request,
+      handlers,
+    );
+  }
+
+  async function runManagedStream<TRequest>(
+    streamRunner: (
+      request: TRequest,
+      options: {
+        signal?: AbortSignal;
+        onMessage: (payload: Record<string, unknown>) => void;
+      },
+    ) => Promise<void>,
+    request: TRequest,
+    handlers: {
+      onMessage: (payload: Record<string, unknown>) => void;
+    },
+  ): Promise<{ aborted: boolean; errorMessage: string | null }> {
     const controller = new AbortController();
     activeController.value = controller;
     chatBusy.value = true;
     errorMessage.value = "";
 
     try {
-      await streamSpreadsheetChat(request, {
+      await streamRunner(request, {
         signal: controller.signal,
         onMessage: handlers.onMessage,
       });
@@ -53,5 +86,6 @@ export function useSseChat(options: { ui: ComputedRef<UiMessages> }) {
     errorMessage,
     stopStreaming,
     runChatStream,
+    runBatchStream,
   };
 }

@@ -446,6 +446,142 @@ describe("ConversationMessage", () => {
     ]);
   });
 
+  it("renders workbook batch summary table for assistant batch result message", () => {
+    const message: ChatMessage = {
+      id: "assistant-batch-summary",
+      role: "assistant",
+      text: "Batch completed: 1/2",
+      status: "done",
+      pipeline: {
+        batch_question: "How many rows?",
+        batch_summary: {
+          total: 2,
+          succeeded: 1,
+          failed: 1,
+        },
+        batch_results: [
+          {
+            sheet_index: 1,
+            sheet_name: "Sales",
+            status: "success",
+            result_row_count: 1,
+            answer: "Sales rows: 120",
+          },
+          {
+            sheet_index: 2,
+            sheet_name: "Users",
+            status: "failed",
+            error: "Internal error",
+            reason_code: "analysis_exception",
+          },
+        ],
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Batch summary");
+    expect(wrapper.text()).toContain("Batch completed: 1/2");
+    expect(wrapper.text()).toContain("Sales (#1)");
+    expect(wrapper.text()).toContain("Users (#2)");
+    expect(wrapper.text()).toContain("Success");
+    expect(wrapper.text()).toContain("Failed");
+    expect(wrapper.text()).toContain("Sales rows: 120");
+    expect(wrapper.text()).toContain("Internal error");
+  });
+
+  it("renders batch progress bar while batch stream is running", () => {
+    const message: ChatMessage = {
+      id: "assistant-batch-progress",
+      role: "assistant",
+      text: "Batch running... 1/3",
+      status: "streaming",
+      pipeline: {
+        batch_progress: {
+          done: 1,
+          total: 3,
+          current_sheet_index: 2,
+          current_sheet_name: "Users",
+          status: "running",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Batch running...");
+    expect(wrapper.text()).toContain("1/3");
+    expect(wrapper.text()).toContain("33%");
+    expect(wrapper.text()).toContain("Sheet: Users (#2)");
+    expect(wrapper.find(".batch-progress-fill").attributes("style")).toContain("width: 33%");
+  });
+
+  it("exports workbook batch summary as csv", async () => {
+    const message: ChatMessage = {
+      id: "assistant-batch-export",
+      role: "assistant",
+      text: "Batch completed: 2/2",
+      status: "done",
+      pipeline: {
+        batch_question: "Show top values",
+        batch_summary: {
+          total: 2,
+          succeeded: 2,
+          failed: 0,
+        },
+        batch_results: [
+          {
+            sheet_index: 1,
+            sheet_name: "Sales",
+            status: "success",
+            result_row_count: 3,
+            answer: "Top value: 180",
+          },
+          {
+            sheet_index: 2,
+            sheet_name: "Users",
+            status: "success",
+            result_row_count: 2,
+            answer: "Top value: 75",
+          },
+        ],
+      },
+      meta: {
+        request_id: "req-batch-export",
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    const exportButton = wrapper.find("button.message-action-batch-csv");
+    expect(exportButton.exists()).toBe(true);
+    await exportButton.trigger("click");
+
+    expect(downloadCsv).toHaveBeenCalledWith(
+      "talk2sheet-batch-summary-req-batch-export.csv",
+      ["Sheet", "Status", "Rows", "Key output"],
+      [
+        ["Sales (#1)", "Success", "3", "Top value: 180"],
+        ["Users (#2)", "Success", "2", "Top value: 75"],
+      ],
+    );
+  });
+
   it("exports chart output as png when chart data exists", async () => {
     const message: ChatMessage = {
       id: "assistant-chart-export",

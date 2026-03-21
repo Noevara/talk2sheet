@@ -1,4 +1,6 @@
 import type {
+  SpreadsheetBatchRequest as GeneratedSpreadsheetBatchRequest,
+  SpreadsheetBatchResponse as GeneratedSpreadsheetBatchResponse,
   ClarificationResolution as GeneratedClarificationResolution,
   PreviewResponse as GeneratedPreviewResponse,
   SheetDescriptor as GeneratedSheetDescriptor,
@@ -45,6 +47,13 @@ export interface SpreadsheetChatRequest extends Omit<GeneratedSpreadsheetChatReq
   clarification_resolution?: ClarificationResolution | null;
   followup_action?: "continue_next_step" | null;
 }
+
+export interface SpreadsheetBatchRequest extends Omit<GeneratedSpreadsheetBatchRequest, "mode" | "locale"> {
+  mode: ChatMode;
+  locale: Locale;
+}
+
+export type SpreadsheetBatchResponse = GeneratedSpreadsheetBatchResponse;
 
 export interface AnswerSegments {
   conclusion?: string;

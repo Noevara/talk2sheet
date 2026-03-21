@@ -7,6 +7,7 @@ import { useSseChat } from "./useSseChat";
 
 vi.mock("../../../lib/api", () => ({
   streamSpreadsheetChat: vi.fn(),
+  streamWorkbookBatchAnalysis: vi.fn(),
   ApiError: class ApiError extends Error {
     status: number;
     requestId: string | null;
@@ -111,5 +112,29 @@ describe("useSseChat", () => {
     );
 
     expect(result.errorMessage).toBe("The streaming response was interrupted. Retry the question. [request_id=req-chat]");
+  });
+
+  it("maps network failures for batch stream requests", async () => {
+    vi.mocked(apiModule.streamWorkbookBatchAnalysis).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const state = useSseChat({
+      ui: computed(() => messages.en),
+    });
+
+    const result = await state.runBatchStream(
+      {
+        file_id: "file-1",
+        question: "show total",
+        mode: "text",
+        sheet_indexes: [1, 2],
+        locale: "en",
+      },
+      {
+        onMessage: vi.fn(),
+      },
+    );
+
+    expect(result.errorMessage).toBe(messages.en.chatConnectionError);
+    expect(state.errorMessage.value).toBe(messages.en.chatConnectionError);
   });
 });

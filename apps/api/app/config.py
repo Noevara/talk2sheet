@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     file_store_backend: str = "local"
     max_preview_rows: int = 200
     max_analysis_rows: int = 50000
+    batch_max_parallel: int = 1
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
     planner_provider: str = "auto"
     context_interpreter_provider: str = "auto"

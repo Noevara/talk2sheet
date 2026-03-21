@@ -61,3 +61,41 @@ class SpreadsheetChatRequest(BaseModel):
     conversation_id: str | None = None
     clarification_resolution: ClarificationResolution | None = None
     followup_action: Literal["continue_next_step"] | None = None
+
+
+class SpreadsheetBatchRequest(BaseModel):
+    file_id: str
+    question: str
+    mode: Literal["auto", "text", "chart"] = "auto"
+    sheet_indexes: list[int] = Field(default_factory=list)
+    locale: str = "en"
+
+
+class SpreadsheetBatchResult(BaseModel):
+    sheet_index: int
+    sheet_name: str
+    status: Literal["success", "failed"]
+    mode: Literal["auto", "text", "chart"] | str = "text"
+    answer: str = ""
+    analysis_text: str = ""
+    result_row_count: int = 0
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    execution_disclosure: ExecutionDisclosure | None = None
+    error: str = ""
+    reason_code: str = ""
+
+
+class SpreadsheetBatchSummary(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+
+
+class SpreadsheetBatchResponse(BaseModel):
+    request_id: str
+    file_id: str
+    question: str
+    mode: Literal["auto", "text", "chart"] | str = "auto"
+    sheet_indexes: list[int] = Field(default_factory=list)
+    batch_results: list[SpreadsheetBatchResult] = Field(default_factory=list)
+    summary: SpreadsheetBatchSummary

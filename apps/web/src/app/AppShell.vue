@@ -67,6 +67,9 @@ usePersistedAppSession({
           :ui="ui"
           :state="workbookState"
           :error-message="workbookState.errorMessage.value"
+          :batch-run-busy="conversation.chatBusy.value"
+          :batch-question="conversation.question.value"
+          @run-batch="conversation.handleBatchAnalysis"
         />
 
         <ConversationFeaturePanel

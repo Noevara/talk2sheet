@@ -3,6 +3,7 @@ import { ref, shallowRef, type ComputedRef, type Ref } from "vue";
 import type { UiMessages } from "../../../i18n/messages";
 import { applyStreamPayload } from "../../../lib/chatPayload";
 import type {
+  SpreadsheetBatchResponse,
   ChatMessage,
   ChatMode,
   ClarificationResolution,
@@ -33,6 +34,25 @@ function buildClarificationDisplayText(ui: UiMessages, selectedValue: string): s
 function readRequestText(message: ChatMessage): string {
   const requestText = message.meta?.requestText;
   return typeof requestText === "string" && requestText.trim() ? requestText.trim() : message.text;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value.replace(/,/g, ""));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+  return null;
 }
 
 export function useConversation(options: {
@@ -236,6 +256,190 @@ export function useConversation(options: {
     });
   }
 
+  function buildBatchResultMessage(payload: SpreadsheetBatchResponse, questionText: string): ChatMessage {
+    const summary = payload.summary || { total: 0, succeeded: 0, failed: 0 };
+    const text = `${options.ui.value.batchSummaryTotalsLabel}: ${summary.succeeded}/${summary.total}`;
+    return {
+      id: createMessageId(),
+      role: "assistant",
+      text,
+      status: "done",
+      pipeline: {
+        batch_question: questionText,
+        batch_results: Array.isArray(payload.batch_results) ? payload.batch_results : [],
+        batch_summary: summary,
+      },
+      meta: {
+        request_id: payload.request_id,
+      },
+    };
+  }
+
+  function buildBatchResponseFromPayload(
+    payload: Record<string, unknown>,
+    fallback: {
+      fileId: string;
+      question: string;
+      mode: ChatMode;
+      sheetIndexes: number[];
+    },
+  ): SpreadsheetBatchResponse {
+    const rawSummary = asRecord(payload.summary);
+    const rawResults = Array.isArray(payload.batch_results) ? payload.batch_results : [];
+    const total = readNumber(rawSummary?.total) ?? rawResults.length;
+    const succeeded = readNumber(rawSummary?.succeeded) ?? 0;
+    const failed = readNumber(rawSummary?.failed) ?? Math.max(0, total - succeeded);
+    const sheetIndexes = Array.isArray(payload.sheet_indexes)
+      ? payload.sheet_indexes.map((item) => Number(item || 0)).filter((item) => item > 0)
+      : fallback.sheetIndexes;
+    return {
+      request_id: readString(payload.request_id) || createMessageId(),
+      file_id: readString(payload.file_id) || fallback.fileId,
+      question: readString(payload.question) || fallback.question,
+      mode: readString(payload.mode) || fallback.mode,
+      sheet_indexes: sheetIndexes,
+      batch_results: rawResults as SpreadsheetBatchResponse["batch_results"],
+      summary: {
+        total,
+        succeeded,
+        failed,
+      },
+    };
+  }
+
+  function applyBatchProgressPayload(
+    message: ChatMessage,
+    payload: Record<string, unknown>,
+    fallbackTotal: number,
+  ): void {
+    const rawCurrentSheet = asRecord(payload.current_sheet);
+    const done = Math.max(0, readNumber(payload.done) ?? 0);
+    const total = Math.max(done, readNumber(payload.total) ?? fallbackTotal);
+    const currentSheetIndex = readNumber(rawCurrentSheet?.sheet_index) ?? readNumber(payload.current_sheet_index);
+    const currentSheetName = readString(rawCurrentSheet?.sheet_name) || readString(payload.current_sheet_name);
+    const status = readString(payload.status) || "running";
+    const sheetStatus = readString(payload.sheet_status);
+    message.pipeline = {
+      ...(message.pipeline || {}),
+      batch_progress: {
+        done,
+        total,
+        status,
+        current_sheet_index: currentSheetIndex,
+        current_sheet_name: currentSheetName,
+        sheet_status: sheetStatus,
+      },
+    };
+    message.text = `${options.ui.value.batchRunBusyLabel} ${done}/${total}`;
+  }
+
+  async function handleBatchAnalysis(sheetIndexes: number[]): Promise<void> {
+    const workbook = workbookContext.value?.workbook.value;
+    if (!workbook) {
+      sseChat.errorMessage.value = options.ui.value.missingFile;
+      return;
+    }
+    const normalizedQuestion = question.value.trim();
+    if (!normalizedQuestion) {
+      sseChat.errorMessage.value = options.ui.value.missingQuestion;
+      return;
+    }
+    if (sseChat.chatBusy.value) {
+      return;
+    }
+    const normalizedSheetIndexes = Array.from(
+      new Set(sheetIndexes.map((item) => Number(item || 0)).filter((item) => item > 0)),
+    );
+    if (!normalizedSheetIndexes.length) {
+      sseChat.errorMessage.value = options.ui.value.batchMissingSheetsError;
+      return;
+    }
+
+    sseChat.errorMessage.value = "";
+
+    const userMessage: ChatMessage = {
+      id: createMessageId(),
+      role: "user",
+      text: `${normalizedQuestion} (${options.ui.value.batchRunLabel})`,
+      status: "done",
+      meta: {
+        requestText: normalizedQuestion,
+      },
+    };
+    const assistantMessage: ChatMessage = {
+      id: createMessageId(),
+      role: "assistant",
+      text: `${options.ui.value.batchRunBusyLabel} 0/${normalizedSheetIndexes.length}`,
+      status: "streaming",
+      pipeline: {
+        batch_progress: {
+          done: 0,
+          total: normalizedSheetIndexes.length,
+          status: "running",
+          current_sheet_index: null,
+          current_sheet_name: "",
+          sheet_status: "",
+        },
+      },
+    };
+    chatMessages.value = [...chatMessages.value, userMessage, assistantMessage];
+    const streamMessage = chatMessages.value[chatMessages.value.length - 1];
+    let finalBatchReceived = false;
+
+    const streamResult = await sseChat.runBatchStream(
+      {
+        file_id: workbook.file_id,
+        question: normalizedQuestion,
+        mode: chatMode.value,
+        sheet_indexes: normalizedSheetIndexes,
+        locale: options.locale.value,
+      },
+      {
+        onMessage: (rawPayload) => {
+          const payload = asRecord(rawPayload);
+          if (!payload) {
+            return;
+          }
+          const eventType = readString(payload.type);
+          if (eventType === "batch_progress") {
+            applyBatchProgressPayload(streamMessage, payload, normalizedSheetIndexes.length);
+            return;
+          }
+          if (eventType === "batch_result") {
+            const batchResponse = buildBatchResponseFromPayload(payload, {
+              fileId: workbook.file_id,
+              question: normalizedQuestion,
+              mode: chatMode.value,
+              sheetIndexes: normalizedSheetIndexes,
+            });
+            const batchMessage = buildBatchResultMessage(batchResponse, normalizedQuestion);
+            streamMessage.text = batchMessage.text;
+            streamMessage.status = "done";
+            streamMessage.pipeline = batchMessage.pipeline;
+            streamMessage.meta = batchMessage.meta;
+            finalBatchReceived = true;
+            question.value = "";
+            return;
+          }
+          if (eventType === "batch_error") {
+            const errorMessage = readString(payload.error) || options.ui.value.chatInterruptedError;
+            sseChat.errorMessage.value = errorMessage;
+            streamMessage.text = errorMessage;
+            streamMessage.status = "done";
+            return;
+          }
+        },
+      },
+    );
+
+    if (streamResult.errorMessage && !finalBatchReceived) {
+      streamMessage.text = streamResult.errorMessage;
+      streamMessage.status = "done";
+    } else if (!finalBatchReceived && streamMessage.status === "streaming") {
+      streamMessage.status = "done";
+    }
+  }
+
   return {
     question,
     composerFocusToken,
@@ -252,6 +456,7 @@ export function useConversation(options: {
     submitQuestion,
     handleClarificationSelect,
     handleContinueNextStep,
+    handleBatchAnalysis,
   };
 }
 

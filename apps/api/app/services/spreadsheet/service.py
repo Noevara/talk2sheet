@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 from pathlib import Path
@@ -10,6 +12,7 @@ from typing import AsyncGenerator
 
 from app.observability import log_event, log_task_step_event, new_request_id
 from app.config import get_settings
+from app.schemas import SpreadsheetBatchResponse, SpreadsheetBatchResult, SpreadsheetBatchSummary
 from .core.i18n import t
 from .analysis import analyze
 from .analysis.utils import build_execution_disclosure
@@ -23,6 +26,8 @@ _MULTI_SHEET_FAILURE_REASON_COUNTER: Counter[str] = Counter()
 _MULTI_SHEET_FAILURE_REASON_LOCK = Lock()
 _MULTI_SHEET_FAILURE_REASON_LIMIT = 5
 _FOLLOWUP_ACTION_CONTINUE_NEXT_STEP = "continue_next_step"
+_BATCH_MAX_SHEETS = 10
+_BATCH_MAX_PARALLEL_HARD_LIMIT = 3
 
 
 def _sse(payload: dict) -> str:
@@ -42,6 +47,514 @@ def _cache_token(path: Path, *, sheet_index: int, scope: str, limit: int | None 
             "" if limit is None else str(int(limit)),
         ]
     )
+
+
+def _normalize_batch_sheet_indexes(
+    *,
+    workbook_context: object,
+    requested_sheet_indexes: list[int] | None,
+) -> list[int]:
+    available_indexes = [
+        int(getattr(sheet, "sheet_index", 0) or 0)
+        for sheet in (getattr(workbook_context, "sheets", []) or [])
+        if int(getattr(sheet, "sheet_index", 0) or 0) > 0
+    ]
+    if not available_indexes:
+        return []
+    available_set = set(available_indexes)
+    normalized: list[int] = []
+    requested = requested_sheet_indexes if isinstance(requested_sheet_indexes, list) else []
+    if requested:
+        for raw in requested:
+            sheet_index = int(raw or 0)
+            if sheet_index <= 0 or sheet_index not in available_set or sheet_index in normalized:
+                continue
+            normalized.append(sheet_index)
+    else:
+        normalized = list(available_indexes)
+    return normalized[:_BATCH_MAX_SHEETS]
+
+
+def _resolve_batch_parallelism(*, settings: object, total_sheets: int) -> int:
+    configured = int(getattr(settings, "batch_max_parallel", 1) or 1)
+    bounded = max(1, min(configured, _BATCH_MAX_PARALLEL_HARD_LIMIT))
+    if total_sheets <= 0:
+        return 1
+    return min(bounded, total_sheets)
+
+
+def _batch_pipeline_snapshot(pipeline: dict[str, object]) -> dict[str, object]:
+    safe_pipeline = dict(pipeline) if isinstance(pipeline, dict) else {}
+    planner = safe_pipeline.get("planner")
+    safe_planner = dict(planner) if isinstance(planner, dict) else {}
+    return {
+        "status": str(safe_pipeline.get("status") or "ok"),
+        "intent": str(safe_planner.get("intent") or ""),
+        "result_row_count": int(safe_pipeline.get("result_row_count") or 0),
+        "result_columns": list(safe_pipeline.get("result_columns") or []) if isinstance(safe_pipeline.get("result_columns"), list) else [],
+        "chart_spec": dict(safe_pipeline.get("chart_spec")) if isinstance(safe_pipeline.get("chart_spec"), dict) else {},
+        "sheet_routing": dict(safe_pipeline.get("sheet_routing")) if isinstance(safe_pipeline.get("sheet_routing"), dict) else {},
+    }
+
+
+def _run_single_sheet_batch_analysis_indexed(
+    position: int,
+    path: Path,
+    settings: object,
+    file_id: str,
+    question: str,
+    mode: str,
+    sheet_index: int,
+    sheet_name: str,
+    locale: str,
+    request_id: str,
+) -> tuple[int, SpreadsheetBatchResult, bool]:
+    sheet_result, is_success = _run_single_sheet_batch_analysis(
+        path=path,
+        settings=settings,
+        file_id=file_id,
+        question=question,
+        mode=mode,
+        sheet_index=sheet_index,
+        sheet_name=sheet_name,
+        locale=locale,
+        request_id=request_id,
+    )
+    return position, sheet_result, is_success
+
+
+def _run_single_sheet_batch_analysis(
+    *,
+    path: Path,
+    settings: object,
+    file_id: str,
+    question: str,
+    mode: str,
+    sheet_index: int,
+    sheet_name: str,
+    locale: str,
+    request_id: str,
+) -> tuple[SpreadsheetBatchResult, bool]:
+    try:
+        sampled_limit = int(getattr(settings, "max_analysis_rows", 0) or 0)
+        df, loaded_sheet_name = load_dataframe(path, sheet_index=sheet_index, limit=sampled_limit)
+        final_sheet_name = loaded_sheet_name or sheet_name
+
+        header_plan = df.attrs.get(HEADER_PLAN_ATTR) if isinstance(df.attrs.get(HEADER_PLAN_ATTR), dict) else None
+
+        def _load_exact_source_df() -> tuple[object, str]:
+            full_df, full_sheet_name = load_full_dataframe(
+                path,
+                sheet_index=sheet_index,
+                header_plan=header_plan,
+            )
+            return full_df, full_sheet_name
+
+        analysis_result = analyze(
+            df,
+            chat_text=question,
+            requested_mode=mode,
+            locale=locale,
+            rows_loaded=int(len(df)),
+            followup_context=None,
+            source_path=path,
+            source_sheet_index=sheet_index,
+            exact_source_df_loader=_load_exact_source_df,
+        )
+        safe_pipeline = dict(analysis_result.pipeline) if isinstance(analysis_result.pipeline, dict) else {}
+        safe_pipeline.setdefault("source_sheet_index", sheet_index)
+        safe_pipeline.setdefault("source_sheet_name", final_sheet_name)
+        return (
+            SpreadsheetBatchResult(
+                sheet_index=sheet_index,
+                sheet_name=final_sheet_name,
+                status="success",
+                mode=analysis_result.mode,
+                answer=str(analysis_result.answer or ""),
+                analysis_text=str(analysis_result.analysis_text or analysis_result.answer or ""),
+                result_row_count=int(safe_pipeline.get("result_row_count") or 0),
+                pipeline=_batch_pipeline_snapshot(safe_pipeline),
+                execution_disclosure=analysis_result.execution_disclosure,
+            ),
+            True,
+        )
+    except Exception as exc:
+        reason_code = "analysis_exception"
+        error_message = t(locale, "internal_error", request_id=request_id)
+        log_event(
+            logger,
+            "spreadsheet_batch_sheet_failed",
+            request_id=request_id,
+            file_id=file_id,
+            sheet_index=sheet_index,
+            sheet_name=sheet_name,
+            reason_code=reason_code,
+            error_type=type(exc).__name__,
+        )
+        return (
+            SpreadsheetBatchResult(
+                sheet_index=sheet_index,
+                sheet_name=sheet_name,
+                status="failed",
+                mode=mode,
+                error=error_message,
+                reason_code=reason_code,
+            ),
+            False,
+        )
+
+
+def _batch_progress_payload(
+    *,
+    request_id: str,
+    file_id: str,
+    done: int,
+    total: int,
+    status: str,
+    current_sheet_index: int | None = None,
+    current_sheet_name: str = "",
+    sheet_status: str = "",
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "type": "batch_progress",
+        "request_id": request_id,
+        "file_id": file_id,
+        "done": int(max(0, done)),
+        "total": int(max(0, total)),
+        "status": str(status or "running"),
+    }
+    if current_sheet_index:
+        payload["current_sheet"] = {
+            "sheet_index": int(current_sheet_index),
+            "sheet_name": str(current_sheet_name or ""),
+        }
+    if sheet_status:
+        payload["sheet_status"] = str(sheet_status)
+    return payload
+
+
+def run_batch_workbook_analysis(
+    *,
+    path: Path,
+    file_id: str,
+    question: str,
+    mode: str,
+    sheet_indexes: list[int] | None,
+    locale: str,
+    request_id: str | None = None,
+) -> SpreadsheetBatchResponse:
+    request_id = str(request_id or new_request_id())
+    normalized_mode = str(mode or "auto").strip() or "auto"
+    normalized_question = str(question or "").strip()
+    settings = get_settings()
+    workbook_context = read_workbook_context(
+        path,
+        file_id=file_id,
+        active_sheet_index=1,
+        preview_limit=min(8, int(settings.max_analysis_rows)),
+    )
+    target_sheet_indexes = _normalize_batch_sheet_indexes(
+        workbook_context=workbook_context,
+        requested_sheet_indexes=sheet_indexes,
+    )
+    batch_parallelism = _resolve_batch_parallelism(settings=settings, total_sheets=len(target_sheet_indexes))
+    sheet_name_map = _sheet_name_map(workbook_context)
+
+    log_event(
+        logger,
+        "spreadsheet_batch_started",
+        request_id=request_id,
+        file_id=file_id,
+        mode=normalized_mode,
+        sheet_indexes=target_sheet_indexes,
+        total=len(target_sheet_indexes),
+        batch_parallelism=batch_parallelism,
+    )
+
+    ordered_batch_results: list[SpreadsheetBatchResult | None] = [None] * len(target_sheet_indexes)
+    succeeded = 0
+    failed = 0
+    if batch_parallelism <= 1:
+        for position, sheet_index in enumerate(target_sheet_indexes):
+            sheet_name = str(sheet_name_map.get(sheet_index) or "")
+            _, sheet_result, is_success = _run_single_sheet_batch_analysis_indexed(
+                position,
+                path,
+                settings,
+                file_id,
+                normalized_question,
+                normalized_mode,
+                sheet_index,
+                sheet_name,
+                locale,
+                request_id,
+            )
+            ordered_batch_results[position] = sheet_result
+            if is_success:
+                succeeded += 1
+            else:
+                failed += 1
+    else:
+        with ThreadPoolExecutor(max_workers=batch_parallelism) as executor:
+            futures = [
+                executor.submit(
+                    _run_single_sheet_batch_analysis_indexed,
+                    position,
+                    path,
+                    settings,
+                    file_id,
+                    normalized_question,
+                    normalized_mode,
+                    sheet_index,
+                    str(sheet_name_map.get(sheet_index) or ""),
+                    locale,
+                    request_id,
+                )
+                for position, sheet_index in enumerate(target_sheet_indexes)
+            ]
+            for future in as_completed(futures):
+                position, sheet_result, is_success = future.result()
+                ordered_batch_results[position] = sheet_result
+                if is_success:
+                    succeeded += 1
+                else:
+                    failed += 1
+
+    batch_results = [item for item in ordered_batch_results if item is not None]
+
+    summary = SpreadsheetBatchSummary(
+        total=len(batch_results),
+        succeeded=succeeded,
+        failed=failed,
+    )
+    log_event(
+        logger,
+        "spreadsheet_batch_completed",
+        request_id=request_id,
+        file_id=file_id,
+        mode=normalized_mode,
+        total=summary.total,
+        succeeded=summary.succeeded,
+        failed=summary.failed,
+        batch_parallelism=batch_parallelism,
+    )
+    return SpreadsheetBatchResponse(
+        request_id=request_id,
+        file_id=file_id,
+        question=normalized_question,
+        mode=normalized_mode,
+        sheet_indexes=target_sheet_indexes,
+        batch_results=batch_results,
+        summary=summary,
+    )
+
+
+async def stream_batch_workbook_analysis(
+    *,
+    path: Path,
+    file_id: str,
+    question: str,
+    mode: str,
+    sheet_indexes: list[int] | None,
+    locale: str,
+    request_id: str | None = None,
+) -> AsyncGenerator[str, None]:
+    request_id = str(request_id or new_request_id())
+    normalized_mode = str(mode or "auto").strip() or "auto"
+    normalized_question = str(question or "").strip()
+    settings = get_settings()
+    try:
+        workbook_context = read_workbook_context(
+            path,
+            file_id=file_id,
+            active_sheet_index=1,
+            preview_limit=min(8, int(settings.max_analysis_rows)),
+        )
+        target_sheet_indexes = _normalize_batch_sheet_indexes(
+            workbook_context=workbook_context,
+            requested_sheet_indexes=sheet_indexes,
+        )
+        batch_parallelism = _resolve_batch_parallelism(settings=settings, total_sheets=len(target_sheet_indexes))
+        sheet_name_map = _sheet_name_map(workbook_context)
+        total = len(target_sheet_indexes)
+
+        log_event(
+            logger,
+            "spreadsheet_batch_stream_started",
+            request_id=request_id,
+            file_id=file_id,
+            mode=normalized_mode,
+            sheet_indexes=target_sheet_indexes,
+            total=total,
+            batch_parallelism=batch_parallelism,
+        )
+        yield _sse(
+            _batch_progress_payload(
+                request_id=request_id,
+                file_id=file_id,
+                done=0,
+                total=total,
+                status="running",
+            )
+        )
+
+        ordered_batch_results: list[SpreadsheetBatchResult | None] = [None] * total
+        succeeded = 0
+        failed = 0
+        if batch_parallelism <= 1:
+            for done, sheet_index in enumerate(target_sheet_indexes):
+                sheet_name = str(sheet_name_map.get(sheet_index) or "")
+                yield _sse(
+                    _batch_progress_payload(
+                        request_id=request_id,
+                        file_id=file_id,
+                        done=done,
+                        total=total,
+                        status="running",
+                        current_sheet_index=sheet_index,
+                        current_sheet_name=sheet_name,
+                    )
+                )
+                position, sheet_result, is_success = _run_single_sheet_batch_analysis_indexed(
+                    done,
+                    path,
+                    settings,
+                    file_id,
+                    normalized_question,
+                    normalized_mode,
+                    sheet_index,
+                    sheet_name,
+                    locale,
+                    request_id,
+                )
+                ordered_batch_results[position] = sheet_result
+                if is_success:
+                    succeeded += 1
+                else:
+                    failed += 1
+
+                yield _sse(
+                    _batch_progress_payload(
+                        request_id=request_id,
+                        file_id=file_id,
+                        done=done + 1,
+                        total=total,
+                        status="running" if done + 1 < total else "completed",
+                        current_sheet_index=sheet_result.sheet_index,
+                        current_sheet_name=sheet_result.sheet_name,
+                        sheet_status=sheet_result.status,
+                    )
+                )
+        else:
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=batch_parallelism) as executor:
+                futures = [
+                    loop.run_in_executor(
+                        executor,
+                        _run_single_sheet_batch_analysis_indexed,
+                        position,
+                        path,
+                        settings,
+                        file_id,
+                        normalized_question,
+                        normalized_mode,
+                        sheet_index,
+                        str(sheet_name_map.get(sheet_index) or ""),
+                        locale,
+                        request_id,
+                    )
+                    for position, sheet_index in enumerate(target_sheet_indexes)
+                ]
+                completed_count = 0
+                for completed_future in asyncio.as_completed(futures):
+                    position, sheet_result, is_success = await completed_future
+                    ordered_batch_results[position] = sheet_result
+                    if is_success:
+                        succeeded += 1
+                    else:
+                        failed += 1
+                    completed_count += 1
+                    yield _sse(
+                        _batch_progress_payload(
+                            request_id=request_id,
+                            file_id=file_id,
+                            done=completed_count,
+                            total=total,
+                            status="running" if completed_count < total else "completed",
+                            current_sheet_index=sheet_result.sheet_index,
+                            current_sheet_name=sheet_result.sheet_name,
+                            sheet_status=sheet_result.status,
+                        )
+                    )
+
+        batch_results = [item for item in ordered_batch_results if item is not None]
+
+        summary = SpreadsheetBatchSummary(
+            total=len(batch_results),
+            succeeded=succeeded,
+            failed=failed,
+        )
+        final_response = SpreadsheetBatchResponse(
+            request_id=request_id,
+            file_id=file_id,
+            question=normalized_question,
+            mode=normalized_mode,
+            sheet_indexes=target_sheet_indexes,
+            batch_results=batch_results,
+            summary=summary,
+        )
+        log_event(
+            logger,
+            "spreadsheet_batch_stream_completed",
+            request_id=request_id,
+            file_id=file_id,
+            mode=normalized_mode,
+            total=summary.total,
+            succeeded=summary.succeeded,
+            failed=summary.failed,
+            batch_parallelism=batch_parallelism,
+        )
+        yield _sse(
+            {
+                "type": "batch_result",
+                **final_response.model_dump(),
+            }
+        )
+        yield _sse(
+            {
+                "type": "batch_done",
+                "request_id": request_id,
+                "file_id": file_id,
+            }
+        )
+    except Exception as exc:
+        logger.exception(
+            json.dumps(
+                {
+                    "event": "spreadsheet_batch_stream_failed",
+                    "request_id": request_id,
+                    "file_id": file_id,
+                    "error_type": type(exc).__name__,
+                },
+                ensure_ascii=False,
+            )
+        )
+        error_message = t(locale, "internal_error", request_id=request_id)
+        yield _sse(
+            {
+                "type": "batch_error",
+                "request_id": request_id,
+                "file_id": file_id,
+                "error": error_message,
+            }
+        )
+        yield _sse(
+            {
+                "type": "batch_done",
+                "request_id": request_id,
+                "file_id": file_id,
+            }
+        )
 
 
 def _sheet_routing_explanation(*, reason: str, matched_by: str, locale: str) -> str:

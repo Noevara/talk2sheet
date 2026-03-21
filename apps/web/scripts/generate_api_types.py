@@ -15,6 +15,11 @@ SELECTED_SCHEMAS = [
     "PreviewResponse",
     "ClarificationResolution",
     "SpreadsheetChatRequest",
+    "ExecutionDisclosure",
+    "SpreadsheetBatchRequest",
+    "SpreadsheetBatchResult",
+    "SpreadsheetBatchSummary",
+    "SpreadsheetBatchResponse",
 ]
 
 

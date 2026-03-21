@@ -1,4 +1,10 @@
-import type { PreviewResponse, SpreadsheetChatRequest, UploadedFileResponse } from "../types";
+import type {
+  PreviewResponse,
+  SpreadsheetBatchRequest,
+  SpreadsheetBatchResponse,
+  SpreadsheetChatRequest,
+  UploadedFileResponse,
+} from "../types";
 import { createRequestId, REQUEST_ID_HEADER } from "./requestId";
 
 const API_BASE_URL = (
@@ -93,6 +99,35 @@ export async function fetchWorkbookSheets(fileId: string): Promise<UploadedFileR
   return ensureJson<UploadedFileResponse>(response);
 }
 
+export async function runWorkbookBatchAnalysis(request: SpreadsheetBatchRequest): Promise<SpreadsheetBatchResponse> {
+  const response = await apiFetch("/spreadsheet/batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+  return ensureJson<SpreadsheetBatchResponse>(response);
+}
+
+export async function streamWorkbookBatchAnalysis(
+  request: SpreadsheetBatchRequest,
+  options: {
+    signal?: AbortSignal;
+    onMessage: (payload: Record<string, unknown>) => void;
+  },
+): Promise<void> {
+  const response = await apiFetch("/spreadsheet/batch/stream", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+    signal: options.signal,
+  });
+  await consumeSseResponse(response, options.onMessage);
+}
+
 function emitSseChunk(chunk: string, onMessage: (payload: Record<string, unknown>) => void): void {
   const lines = chunk
     .split("\n")
@@ -123,7 +158,13 @@ export async function streamSpreadsheetChat(
     body: JSON.stringify(request),
     signal: options.signal,
   });
+  await consumeSseResponse(response, options.onMessage);
+}
 
+async function consumeSseResponse(
+  response: Response,
+  onMessage: (payload: Record<string, unknown>) => void,
+): Promise<void> {
   if (!response.ok || !response.body) {
     const parsedError = await parseError(response);
     throw new ApiError(response.status, parsedError.detail, parsedError.requestId);
@@ -142,7 +183,7 @@ export async function streamSpreadsheetChat(
       const chunk = buffer.slice(0, boundary).trim();
       buffer = buffer.slice(boundary + 2);
       if (chunk) {
-        emitSseChunk(chunk, options.onMessage);
+        emitSseChunk(chunk, onMessage);
       }
       boundary = buffer.indexOf("\n\n");
     }
@@ -154,6 +195,6 @@ export async function streamSpreadsheetChat(
 
   const trailing = buffer.trim();
   if (trailing) {
-    emitSseChunk(trailing, options.onMessage);
+    emitSseChunk(trailing, onMessage);
   }
 }

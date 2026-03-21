@@ -113,9 +113,101 @@ function formatTaskStepStatusLabel(status: "pending" | "current" | "completed" |
   return props.ui.taskStepPendingLabel;
 }
 
+function normalizeBatchStatus(status: string): "success" | "failed" {
+  return status.trim().toLowerCase() === "failed" ? "failed" : "success";
+}
+
+function formatBatchStatusLabel(status: "success" | "failed"): string {
+  return status === "failed" ? props.ui.batchStatusFailedLabel : props.ui.batchStatusSuccessLabel;
+}
+
 const detailRows = computed(() => {
   const rows = props.message.pipeline?.preview_rows;
   return Array.isArray(rows) ? (rows as unknown[][]) : [];
+});
+
+const batchProgressMeta = computed(() => {
+  if (props.message.role !== "assistant" || props.message.status !== "streaming") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  const rawProgress = asRecord(pipeline?.batch_progress);
+  if (!rawProgress) {
+    return null;
+  }
+  const done = Math.max(0, readNumber(rawProgress.done) ?? 0);
+  const total = Math.max(done, readNumber(rawProgress.total) ?? 0);
+  if (!total) {
+    return null;
+  }
+  const currentSheetIndex = readNumber(rawProgress.current_sheet_index);
+  const currentSheetName = readString(rawProgress.current_sheet_name);
+  const currentSheetLabel = formatSheetDescriptor(currentSheetName, currentSheetIndex);
+  const progressRate = Math.max(0, Math.min(1, done / total));
+  return {
+    done,
+    total,
+    currentSheetLabel: currentSheetLabel === "—" ? "" : currentSheetLabel,
+    percentLabel: `${Math.round(progressRate * 100)}%`,
+    progressStyle: {
+      width: `${Math.round(progressRate * 100)}%`,
+    },
+  };
+});
+
+const batchSummaryMeta = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const rawResults = Array.isArray(pipeline.batch_results) ? (pipeline.batch_results as unknown[]) : [];
+  if (!rawResults.length) {
+    return null;
+  }
+  const summary = asRecord(pipeline.batch_summary);
+  const rows = rawResults
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item) => {
+      const sheetIndex = readNumber(item.sheet_index);
+      const sheetName = readString(item.sheet_name);
+      const status = normalizeBatchStatus(readString(item.status));
+      const resultRows = readNumber(item.result_row_count);
+      const answer = readString(item.answer);
+      const analysis = readString(item.analysis_text);
+      const error = readString(item.error);
+      return {
+        sheetLabel: formatSheetDescriptor(sheetName, sheetIndex),
+        status,
+        statusLabel: formatBatchStatusLabel(status),
+        resultRowsLabel: resultRows !== null ? resultRows.toLocaleString() : "—",
+        keyOutput: answer || analysis || error || "—",
+      };
+    });
+  if (!rows.length) {
+    return null;
+  }
+
+  const total = readNumber(summary?.total) ?? rows.length;
+  const succeeded = readNumber(summary?.succeeded) ?? rows.filter((item) => item.status === "success").length;
+  const failed = readNumber(summary?.failed) ?? rows.filter((item) => item.status === "failed").length;
+  const question = readString(pipeline.batch_question);
+  return {
+    question,
+    total,
+    succeeded,
+    failed,
+    columns: [
+      props.ui.batchSummarySheetLabel,
+      props.ui.batchSummaryStatusLabel,
+      props.ui.batchSummaryRowsLabel,
+      props.ui.batchSummaryAnswerLabel,
+    ],
+    tableRows: rows.map((item) => [item.sheetLabel, item.statusLabel, item.resultRowsLabel, item.keyOutput]),
+  };
 });
 
 const detailColumns = computed(() => {
@@ -370,6 +462,12 @@ const detailTableLabel = computed(() => {
 const compactTable = computed(() => {
   const isDetailRows = Boolean((transformPlan.value as { return_rows?: boolean } | null)?.return_rows);
   return !isDetailRows;
+});
+
+const batchExportCsvFilename = computed(() => {
+  const meta = asRecord(props.message.meta);
+  const requestId = readString(meta?.request_id).replace(/[^a-zA-Z0-9_-]/g, "");
+  return requestId ? `talk2sheet-batch-summary-${requestId}.csv` : "talk2sheet-batch-summary.csv";
 });
 
 const copyableAnswerText = computed(() => {
@@ -754,6 +852,9 @@ const followupSuggestions = computed(() => {
   if (props.message.role !== "assistant" || props.message.status === "streaming" || Boolean(clarification.value)) {
     return [];
   }
+  if (batchSummaryMeta.value) {
+    return [];
+  }
   const planner = plannerMeta.value;
   const answerMeta = answerGenerationMeta.value;
   const intent = readString(planner?.intent) || readString(answerMeta?.summary_kind);
@@ -823,6 +924,13 @@ async function handleCopyAnswer(): Promise<void> {
 
 function handleExportCsv(): void {
   downloadCsv(exportCsvFilename.value, detailColumns.value, detailRows.value);
+}
+
+function handleExportBatchCsv(): void {
+  if (!batchSummaryMeta.value) {
+    return;
+  }
+  downloadCsv(batchExportCsvFilename.value, batchSummaryMeta.value.columns, batchSummaryMeta.value.tableRows);
 }
 
 async function handleExportChart(): Promise<void> {
@@ -1011,6 +1119,45 @@ async function handleExportChart(): Promise<void> {
       <button type="button" class="message-action" @click="handleCopyAnswer">
         {{ copyState === "done" ? ui.copyAnswerDoneLabel : ui.copyAnswerLabel }}
       </button>
+    </div>
+
+    <div v-if="batchProgressMeta" class="message-batch-progress">
+      <div class="section-label">{{ ui.batchRunBusyLabel }}</div>
+      <div class="batch-progress-head">
+        <strong>{{ batchProgressMeta.done }}/{{ batchProgressMeta.total }}</strong>
+        <span>{{ batchProgressMeta.percentLabel }}</span>
+      </div>
+      <div class="batch-progress-track">
+        <div class="batch-progress-fill" :style="batchProgressMeta.progressStyle"></div>
+      </div>
+      <p v-if="batchProgressMeta.currentSheetLabel" class="message-secondary">
+        {{ ui.batchSummarySheetLabel }}: {{ batchProgressMeta.currentSheetLabel }}
+      </p>
+    </div>
+
+    <div v-if="batchSummaryMeta" class="message-batch-summary">
+      <div class="section-head">
+        <div class="section-label">{{ ui.batchSummaryLabel }}</div>
+        <button
+          type="button"
+          class="message-action message-action-secondary message-action-batch-csv"
+          @click="handleExportBatchCsv"
+        >
+          {{ ui.exportCsvLabel }}
+        </button>
+      </div>
+      <p class="message-secondary">
+        {{ ui.batchSummaryTotalsLabel }}: {{ batchSummaryMeta.succeeded }}/{{ batchSummaryMeta.total }}
+        <span v-if="batchSummaryMeta.failed > 0"> ({{ ui.batchStatusFailedLabel }}: {{ batchSummaryMeta.failed }})</span>
+      </p>
+      <p v-if="batchSummaryMeta.question" class="message-secondary">
+        {{ batchSummaryMeta.question }}
+      </p>
+      <DataTable
+        :columns="batchSummaryMeta.columns"
+        :rows="batchSummaryMeta.tableRows"
+        :empty-text="ui.noChartData"
+      />
     </div>
 
     <div v-if="message.role === 'assistant' && followupSuggestions.length" class="message-followup">
@@ -1561,6 +1708,8 @@ async function handleExportChart(): Promise<void> {
 .message-scope,
 .message-routing,
 .message-analysis-summary,
+.message-batch-progress,
+.message-batch-summary,
 .message-followup,
 .message-meta,
 .message-chart,
@@ -1735,6 +1884,46 @@ async function handleExportChart(): Promise<void> {
   font-size: 0.9rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.message-batch-progress {
+  border-radius: 18px;
+  padding: 0.78rem 0.88rem;
+  border: 1px solid rgba(29, 95, 133, 0.2);
+  background: rgba(29, 95, 133, 0.08);
+}
+
+.batch-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  color: #173254;
+}
+
+.batch-progress-head strong {
+  font-size: 0.94rem;
+}
+
+.batch-progress-head span {
+  font-size: 0.8rem;
+  color: rgba(23, 50, 84, 0.7);
+}
+
+.batch-progress-track {
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(23, 50, 84, 0.12);
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1d5f85, #c85c3c);
+  transition: width 180ms ease;
 }
 
 .message-meta {

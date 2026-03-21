@@ -199,6 +199,86 @@
           }
         }
       }
+    },
+    "/api/spreadsheet/batch": {
+      "post": {
+        "tags": [
+          "spreadsheet"
+        ],
+        "summary": "Spreadsheet Batch Analyze",
+        "operationId": "spreadsheet_batch_analyze_api_spreadsheet_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpreadsheetBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpreadsheetBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/spreadsheet/batch/stream": {
+      "post": {
+        "tags": [
+          "spreadsheet"
+        ],
+        "summary": "Spreadsheet Batch Stream",
+        "operationId": "spreadsheet_batch_stream_api_spreadsheet_batch_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpreadsheetBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -249,6 +329,59 @@
           "selected_value"
         ],
         "title": "ClarificationResolution"
+      },
+      "ExecutionDisclosure": {
+        "properties": {
+          "data_scope": {
+            "type": "string",
+            "enum": [
+              "exact_full_table",
+              "sampled_first_n"
+            ],
+            "title": "Data Scope"
+          },
+          "exact_used": {
+            "type": "boolean",
+            "title": "Exact Used"
+          },
+          "scope_text": {
+            "type": "string",
+            "title": "Scope Text"
+          },
+          "scope_warning": {
+            "type": "string",
+            "title": "Scope Warning",
+            "default": ""
+          },
+          "fallback_reason": {
+            "type": "string",
+            "title": "Fallback Reason",
+            "default": ""
+          },
+          "fallback_reason_code": {
+            "type": "string",
+            "title": "Fallback Reason Code",
+            "default": ""
+          },
+          "max_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_scope",
+          "exact_used",
+          "scope_text"
+        ],
+        "title": "ExecutionDisclosure"
       },
       "HTTPValidationError": {
         "properties": {
@@ -388,6 +521,211 @@
         ],
         "title": "SheetDescriptor"
       },
+      "SpreadsheetBatchRequest": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "text",
+              "chart"
+            ],
+            "title": "Mode",
+            "default": "auto"
+          },
+          "sheet_indexes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sheet Indexes"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "default": "en"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "question"
+        ],
+        "title": "SpreadsheetBatchRequest"
+      },
+      "SpreadsheetBatchResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "text",
+                  "chart"
+                ]
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Mode",
+            "default": "auto"
+          },
+          "sheet_indexes": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sheet Indexes"
+          },
+          "batch_results": {
+            "items": {
+              "$ref": "#/components/schemas/SpreadsheetBatchResult"
+            },
+            "type": "array",
+            "title": "Batch Results"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SpreadsheetBatchSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "file_id",
+          "question",
+          "summary"
+        ],
+        "title": "SpreadsheetBatchResponse"
+      },
+      "SpreadsheetBatchResult": {
+        "properties": {
+          "sheet_index": {
+            "type": "integer",
+            "title": "Sheet Index"
+          },
+          "sheet_name": {
+            "type": "string",
+            "title": "Sheet Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "text",
+                  "chart"
+                ]
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Mode",
+            "default": "text"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "default": ""
+          },
+          "analysis_text": {
+            "type": "string",
+            "title": "Analysis Text",
+            "default": ""
+          },
+          "result_row_count": {
+            "type": "integer",
+            "title": "Result Row Count",
+            "default": 0
+          },
+          "pipeline": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Pipeline"
+          },
+          "execution_disclosure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionDisclosure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": ""
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "sheet_index",
+          "sheet_name",
+          "status"
+        ],
+        "title": "SpreadsheetBatchResult"
+      },
+      "SpreadsheetBatchSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "succeeded": {
+            "type": "integer",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "succeeded",
+          "failed"
+        ],
+        "title": "SpreadsheetBatchSummary"
+      },
       "SpreadsheetChatRequest": {
         "properties": {
           "file_id": {
@@ -443,6 +781,18 @@
                 "type": "null"
               }
             ]
+          },
+          "followup_action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "continue_next_step"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Action"
           }
         },
         "type": "object",
