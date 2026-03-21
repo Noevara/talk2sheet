@@ -15,6 +15,23 @@ class FollowupValueFilter(BaseModel):
     value: str
 
 
+class FollowupAnchorFilter(BaseModel):
+    column: str
+    op: str = "="
+    value: str
+
+
+class FollowupAnalysisAnchor(BaseModel):
+    intent: str = ""
+    metric_column: str | None = None
+    metric_agg: str | None = None
+    metric_alias: str | None = None
+    dimension_column: str | None = None
+    time_column: str | None = None
+    time_grain: str | None = None
+    filters: list[FollowupAnchorFilter] = Field(default_factory=list)
+
+
 class FollowupInterpretation(BaseModel):
     kind: Literal[
         "new_question",
@@ -40,6 +57,7 @@ class FollowupInterpretation(BaseModel):
     value_filters: list[FollowupValueFilter] = Field(default_factory=list)
     switch_sheet: bool = False
     sheet_reference: Literal["auto", "current", "previous", "another"] = "auto"
+    analysis_anchor: FollowupAnalysisAnchor | None = None
     confidence: float = 0.0
     reasoning: str = ""
 
@@ -137,6 +155,95 @@ def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
     return any(token in lowered for token in tokens)
 
 
+def _normalize_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _safe_list(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, list) else []
+
+
+def _anchor_filters_from_selection(selection_plan: dict[str, Any]) -> list[FollowupAnchorFilter]:
+    filters: list[FollowupAnchorFilter] = []
+    for item in _safe_list(selection_plan.get("filters")):
+        payload = _safe_dict(item)
+        column = _normalize_text(payload.get("col"))
+        op = _normalize_text(payload.get("op")) or "="
+        value = _normalize_text(payload.get("value"))
+        if not column or not value:
+            continue
+        filters.append(FollowupAnchorFilter(column=column, op=op, value=value))
+        if len(filters) >= 3:
+            break
+    return filters
+
+
+def _anchor_from_context(followup_context: dict[str, Any] | None) -> FollowupAnalysisAnchor | None:
+    if not isinstance(followup_context, dict):
+        return None
+    existing = followup_context.get("analysis_anchor")
+    if isinstance(existing, dict):
+        try:
+            return FollowupAnalysisAnchor.model_validate(existing)
+        except Exception:
+            pass
+
+    last_turn = _safe_dict(followup_context.get("last_turn"))
+    summary = _safe_dict(followup_context.get("last_pipeline_summary"))
+    selection_plan = _safe_dict(last_turn.get("selection_plan"))
+    transform_plan = _safe_dict(last_turn.get("transform_plan"))
+
+    metrics = _safe_list(transform_plan.get("metrics"))
+    first_metric = _safe_dict(metrics[0]) if metrics else {}
+    groupby = _safe_list(transform_plan.get("groupby"))
+    derived_columns = _safe_list(transform_plan.get("derived_columns"))
+
+    time_column = ""
+    time_grain = ""
+    for item in derived_columns:
+        derived = _safe_dict(item)
+        if _normalize_text(derived.get("kind")) != "date_bucket":
+            continue
+        time_column = _normalize_text(derived.get("source_col"))
+        time_grain = _normalize_text(derived.get("grain"))
+        if time_column or time_grain:
+            break
+
+    intent = _normalize_text(last_turn.get("intent")) or _normalize_text(summary.get("intent"))
+    metric_column = _normalize_text(first_metric.get("col")) or _normalize_text(summary.get("target_metric"))
+    metric_agg = _normalize_text(first_metric.get("agg"))
+    metric_alias = _normalize_text(first_metric.get("as_name"))
+    dimension_column = _normalize_text(groupby[0]) if groupby else _normalize_text(summary.get("target_dimension"))
+    filters = _anchor_filters_from_selection(selection_plan)
+
+    if not any([intent, metric_column, dimension_column, time_column, filters]):
+        return None
+    return FollowupAnalysisAnchor(
+        intent=intent,
+        metric_column=metric_column or None,
+        metric_agg=metric_agg or None,
+        metric_alias=metric_alias or None,
+        dimension_column=dimension_column or None,
+        time_column=time_column or None,
+        time_grain=time_grain or None,
+        filters=filters,
+    )
+
+
+def build_analysis_anchor_payload(
+    *,
+    followup_context: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    anchor = _anchor_from_context(followup_context)
+    if anchor is None:
+        return None
+    return anchor.model_dump()
+
+
 def _sheet_reference_hint(chat_text: str, followup_context: dict[str, Any] | None) -> Literal["auto", "current", "previous", "another"]:
     if isinstance(followup_context, dict):
         explicit_hint = str(followup_context.get("sheet_reference_hint") or "").strip().lower()
@@ -176,11 +283,17 @@ class HeuristicContextInterpreter:
                 meta={"provider": self.name, "used": False, "reason": "not_followup"},
             )
 
+        anchor = _anchor_from_context(followup_context)
         sheet_reference = _sheet_reference_hint(chat_text, followup_context)
         if sheet_reference == "auto":
             return InterpretationResult(
                 interpretation=None,
-                meta={"provider": self.name, "used": False, "reason": "no_sheet_reference"},
+                meta={
+                    "provider": self.name,
+                    "used": False,
+                    "reason": "no_sheet_reference",
+                    "analysis_anchor_used": bool(anchor),
+                },
             )
 
         switch_sheet = sheet_reference in {"another", "previous"}
@@ -191,6 +304,7 @@ class HeuristicContextInterpreter:
             preserve_previous_analysis=True,
             switch_sheet=switch_sheet,
             sheet_reference=sheet_reference,
+            analysis_anchor=anchor,
             confidence=0.82,
             reasoning="Heuristically resolved sheet pronoun in follow-up context.",
         )
@@ -202,6 +316,7 @@ class HeuristicContextInterpreter:
                 "confidence": float(interpretation.confidence or 0.0),
                 "kind": interpretation.kind,
                 "sheet_reference": sheet_reference,
+                "analysis_anchor_used": bool(anchor),
             },
         )
 
@@ -242,6 +357,10 @@ class LLMContextInterpreter:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
+        if payload.analysis_anchor is None:
+            fallback_anchor = _anchor_from_context(followup_context)
+            if fallback_anchor is not None:
+                payload = payload.model_copy(update={"analysis_anchor": fallback_anchor})
         return InterpretationResult(
             interpretation=payload,
             meta={
@@ -250,6 +369,7 @@ class LLMContextInterpreter:
                 "confidence": float(payload.confidence or 0.0),
                 "kind": payload.kind,
                 "preserve_previous_analysis": bool(payload.preserve_previous_analysis),
+                "analysis_anchor_used": payload.analysis_anchor is not None,
             },
         )
 

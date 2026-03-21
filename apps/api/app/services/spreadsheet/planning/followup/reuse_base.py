@@ -28,6 +28,37 @@ def _same_sheet_followup_context(followup_context: dict[str, Any] | None) -> boo
     return True
 
 
+def _anchor_structured_turn(
+    followup_context: dict[str, Any] | None,
+) -> tuple[str, SelectionPlan, TransformPlan, ChartSpec | None] | None:
+    if not isinstance(followup_context, dict):
+        return None
+    anchor = followup_context.get("analysis_anchor")
+    if not isinstance(anchor, dict):
+        return None
+    selection_payload = anchor.get("selection_plan")
+    transform_payload = anchor.get("transform_plan")
+    if not isinstance(selection_payload, dict) or not isinstance(transform_payload, dict):
+        return None
+
+    try:
+        selection_plan = SelectionPlan.model_validate(selection_payload)
+        transform_plan = TransformPlan.model_validate(transform_payload)
+    except Exception:
+        return None
+
+    chart_spec: ChartSpec | None = None
+    chart_payload = anchor.get("chart_spec")
+    if isinstance(chart_payload, dict):
+        try:
+            chart_spec = ChartSpec.model_validate(chart_payload)
+        except Exception:
+            chart_spec = None
+
+    intent = str(anchor.get("intent") or _followup_last_intent(followup_context) or "").strip()
+    return intent, selection_plan, transform_plan, chart_spec
+
+
 def _match_question_value(df: Any, column: str, question: str) -> str | None:
     if column not in getattr(df, "columns", []):
         return None
@@ -55,6 +86,9 @@ def _load_previous_structured_turn(
 ) -> tuple[str, SelectionPlan, TransformPlan, ChartSpec | None] | None:
     if not isinstance(followup_context, dict):
         return None
+    anchored = _anchor_structured_turn(followup_context)
+    if anchored is not None:
+        return anchored
     if not _same_sheet_followup_context(followup_context):
         return None
     last_turn = _followup_last_turn(followup_context)

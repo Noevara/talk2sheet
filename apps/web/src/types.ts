@@ -43,6 +43,7 @@ export interface SpreadsheetChatRequest extends Omit<GeneratedSpreadsheetChatReq
   locale: Locale;
   sheet_override?: boolean;
   clarification_resolution?: ClarificationResolution | null;
+  followup_action?: "continue_next_step" | null;
 }
 
 export interface AnswerSegments {

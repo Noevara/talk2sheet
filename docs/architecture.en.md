@@ -42,9 +42,13 @@ This is not positioned as a general BI or advanced statistics platform yet. The 
   - recent pipeline summaries stored in memory
   - reuse of semantic and sheet context
   - clarification loop
+  - task-step memory across sequential sheet analysis
+  - one-click continue-next-step flow with follow-up action routing
+  - analysis-anchor carry-over to keep follow-up scope stable
 - frontend execution visibility
   - execution pipeline visibility
   - sheet routing summary
+  - step comparison card (previous step vs current step, non-join)
   - result tables / detail tables / simple charts
   - structured answer segments
   - `mode = auto / text / chart`
@@ -99,6 +103,7 @@ The backend lives under `apps/api/app/` and uses a responsibility-oriented packa
   HTTP request / response contracts
 - `apps/api/app/observability.py`
   `X-Request-ID` and structured logging helpers
+  task-step event logging helper (`task_step_started` / `task_step_completed` / `task_step_failed`)
 - `apps/api/app/api/routes/files.py`
   upload, sheet listing, and preview endpoints
 - `apps/api/app/api/routes/spreadsheet.py`
@@ -197,6 +202,8 @@ The conversation layer currently stores:
 - analysis intent summaries
 - last resolved `sheet_index / sheet_name`
 - clarification resolution payloads
+- task steps and current step id for sequential workflows
+- analysis anchor snapshots for follow-up scope reuse
 
 ## 5. Frontend Architecture
 

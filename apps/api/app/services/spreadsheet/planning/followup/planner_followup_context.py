@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...conversation.context_interpreter import get_default_context_interpreter
+from ...conversation.context_interpreter import build_analysis_anchor_payload, get_default_context_interpreter
 from ..intent_accessors import analysis_intent_kind
 from ..planner_intent_signals import (
     _detail_question,
@@ -107,8 +107,13 @@ def _with_interpreted_followup(
 
     enhanced_context = dict(followup_context)
     interpretation = result.interpretation
+    anchor_payload = build_analysis_anchor_payload(followup_context=followup_context)
+    if interpretation is not None and interpretation.analysis_anchor is not None:
+        anchor_payload = interpretation.analysis_anchor.model_dump()
     if interpretation is not None and float(interpretation.confidence or 0.0) >= 0.55:
         enhanced_context["_interpreted"] = interpretation.model_dump()
+    if isinstance(anchor_payload, dict) and anchor_payload:
+        enhanced_context["analysis_anchor"] = anchor_payload
     return enhanced_context, result.meta
 
 
@@ -459,6 +464,42 @@ def _followup_last_question(followup_context: dict[str, Any] | None) -> str:
     return str(last_turn.get("question") or "").strip()
 
 
+def _analysis_anchor_summary(followup_context: dict[str, Any] | None) -> str:
+    if not isinstance(followup_context, dict):
+        return ""
+    anchor = followup_context.get("analysis_anchor")
+    if not isinstance(anchor, dict):
+        return ""
+    parts: list[str] = []
+    metric = str(anchor.get("metric_column") or anchor.get("metric_alias") or "").strip()
+    if metric:
+        parts.append(f"metric={metric}")
+    dimension = str(anchor.get("dimension_column") or "").strip()
+    if dimension:
+        parts.append(f"dimension={dimension}")
+    time_column = str(anchor.get("time_column") or "").strip()
+    time_grain = str(anchor.get("time_grain") or "").strip()
+    if time_column and time_grain:
+        parts.append(f"time={time_column}({time_grain})")
+    elif time_column:
+        parts.append(f"time={time_column}")
+    filters = anchor.get("filters")
+    if isinstance(filters, list):
+        rendered_filters: list[str] = []
+        for item in filters[:2]:
+            if not isinstance(item, dict):
+                continue
+            col = str(item.get("column") or "").strip()
+            op = str(item.get("op") or "=").strip() or "="
+            value = str(item.get("value") or "").strip()
+            if not col or not value:
+                continue
+            rendered_filters.append(f"{col}{op}{value}")
+        if rendered_filters:
+            parts.append(f"filters={', '.join(rendered_filters)}")
+    return "; ".join(parts)
+
+
 def _contextual_followup(chat_text: str, followup_context: dict[str, Any] | None) -> bool:
     interpreted_kind = str(_interpreted_value(followup_context, "kind", "") or "")
     if interpreted_kind.startswith("followup"):
@@ -474,6 +515,8 @@ def _sheet_switch_followup(chat_text: str, followup_context: dict[str, Any] | No
     if bool(_interpreted_value(followup_context, "switch_sheet", False)):
         return True
     if str(_interpreted_value(followup_context, "sheet_reference", "") or "") in {"another", "previous"}:
+        return True
+    if isinstance(followup_context, dict) and str(followup_context.get("followup_action") or "") == "continue_next_step":
         return True
     if isinstance(followup_context, dict) and bool(followup_context.get("wants_sheet_switch")):
         return True
@@ -518,11 +561,14 @@ def _effective_chat_text(chat_text: str, followup_context: dict[str, Any] | None
     if _contextual_followup(current, followup_context):
         last_mode = str(followup_context.get("last_mode") or "").strip() if isinstance(followup_context, dict) else ""
         pipeline_summary = followup_context.get("last_pipeline_summary") if isinstance(followup_context, dict) else None
+        anchor_summary = _analysis_anchor_summary(followup_context)
         lines = [f"Previous question: {previous_question}", f"Previous intent: {previous_intent}"]
         if last_mode:
             lines.append(f"Previous mode: {last_mode}")
         if isinstance(pipeline_summary, dict) and pipeline_summary:
             lines.append(f"Previous pipeline summary: {pipeline_summary}")
+        if anchor_summary:
+            lines.append(f"Previous analysis anchor: {anchor_summary}")
         lines.append(f"Follow-up request: {current}")
         return "\n".join(lines)
     return current

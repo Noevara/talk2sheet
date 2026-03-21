@@ -17,6 +17,7 @@ defineProps<{
 const emit = defineEmits<{
   clarificationSelect: [payload: { messageId: string; value: string }];
   followupSelect: [question: string];
+  continueNextStep: [payload: { messageId: string }];
   "update:question": [value: string];
   "update:mode": [value: ChatMode];
   submit: [];
@@ -37,6 +38,7 @@ const emit = defineEmits<{
       :ui="ui"
       @clarification-select="emit('clarificationSelect', $event)"
       @followup-select="emit('followupSelect', $event)"
+      @continue-next-step="emit('continueNextStep', $event)"
     />
 
     <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>

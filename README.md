@@ -14,6 +14,7 @@ Current release focus:
 - workbook-level multi-sheet detection and decomposition guidance
 - natural-language spreadsheet analysis
 - multi-turn conversation with clarification and follow-up context
+- task-step oriented sequential workflow across sheets
 - visible execution scope, routing summary, result tables, and charts
 - answer copy, CSV/PNG export, and local session restore after refresh
 - multilingual UI and documentation
@@ -23,6 +24,10 @@ Supported now:
 - file upload, sheet list, and preview
 - workbook-aware routing to one target sheet
 - sequential workbook analysis across sheets (analyze A first, then continue on B in follow-up turns)
+- task steps card with per-step status (pending / in progress / completed / failed)
+- one-click "continue to next step" to jump to the next sheet with the same scope
+- analysis anchor carry-over to keep metric / dimension / time scope stable across follow-up turns
+- previous-vs-current step comparison card (A vs B, non-join)
 - multi-sheet question clarification with decomposition hints
 - row count, totals, averages, distinct count
 - period compare: month-over-month / year-over-year, delta, ratio
@@ -35,6 +40,7 @@ Supported now:
 - lightweight time-series forecasting
 - `auto / text / chart` response mode
 - user-visible analysis pipeline, sheet-routing summary, and structured answer output
+- task-step observability (`task_step_started` / `task_step_completed` / `task_step_failed`) with request_id linkage
 - user-visible routing explanations and reason codes
 - clarification cards for both sheet and column resolution, with natural confirmation follow-up
 - result-card follow-up suggestions that prefill the next question draft

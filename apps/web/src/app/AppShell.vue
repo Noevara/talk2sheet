@@ -79,6 +79,7 @@ usePersistedAppSession({
           :error-message="conversation.errorMessage.value"
           @clarification-select="conversation.handleClarificationSelect"
           @followup-select="conversation.applySuggestedFollowup"
+          @continue-next-step="conversation.handleContinueNextStep"
           @update:question="conversation.question.value = $event"
           @update:mode="conversation.chatMode.value = $event"
           @submit="conversation.submitQuestion"

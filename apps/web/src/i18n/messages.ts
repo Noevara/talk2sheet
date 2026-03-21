@@ -43,6 +43,8 @@ export interface UiMessages {
   modeChartLabel: string;
   clarificationSelectedLabel: string;
   followupLabel: string;
+  followupContinueNextStepLabel: string;
+  followupContinueNextStepSubmittedLabel: string;
   followupSuggestionSwitchToChart: string;
   followupSuggestionSwitchToText: string;
   followupSuggestionRefineTop3: string;
@@ -144,6 +146,18 @@ export interface UiMessages {
   sheetSwitchReasonFollowupAnotherLabel: string;
   sheetSwitchReasonFollowupExplicitLabel: string;
   sheetSwitchReasonFollowupPreviousLabel: string;
+  analysisAnchorLabel: string;
+  analysisAnchorHint: string;
+  taskStepsLabel: string;
+  taskCurrentStepLabel: string;
+  taskStepPendingLabel: string;
+  taskStepCurrentLabel: string;
+  taskStepCompletedLabel: string;
+  taskStepFailedLabel: string;
+  stepComparisonLabel: string;
+  stepComparisonPreviousLabel: string;
+  stepComparisonCurrentLabel: string;
+  stepComparisonIndependentHint: string;
   uploadError: string;
   uploadInvalidFileError: string;
   uploadTooLargeError: string;
@@ -202,6 +216,8 @@ export const messages: Record<Locale, UiMessages> = {
     modeChartLabel: "Chart",
     clarificationSelectedLabel: "Confirmed column",
     followupLabel: "Continue with",
+    followupContinueNextStepLabel: "Continue to next step",
+    followupContinueNextStepSubmittedLabel: "Continue to the next sheet with the same scope.",
     followupSuggestionSwitchToChart: "Render this result as a chart.",
     followupSuggestionSwitchToText: "Summarize this result in text only.",
     followupSuggestionRefineTop3: "Keep the same scope but limit to Top 3.",
@@ -304,6 +320,18 @@ export const messages: Record<Locale, UiMessages> = {
     sheetSwitchReasonFollowupAnotherLabel: "Follow-up requested another sheet",
     sheetSwitchReasonFollowupExplicitLabel: "Follow-up explicitly selected this sheet",
     sheetSwitchReasonFollowupPreviousLabel: "Follow-up requested the previous sheet",
+    analysisAnchorLabel: "Scope carried over",
+    analysisAnchorHint: "This answer keeps the same analysis scope from the previous step.",
+    taskStepsLabel: "Task steps",
+    taskCurrentStepLabel: "Current step",
+    taskStepPendingLabel: "Pending",
+    taskStepCurrentLabel: "In progress",
+    taskStepCompletedLabel: "Completed",
+    taskStepFailedLabel: "Failed",
+    stepComparisonLabel: "Step comparison",
+    stepComparisonPreviousLabel: "Previous step",
+    stepComparisonCurrentLabel: "Current step",
+    stepComparisonIndependentHint: "Each step is computed independently per sheet; this is not a cross-sheet join result.",
     uploadError: "Upload failed",
     uploadInvalidFileError: "Only .xlsx, .xls, and .csv files are supported.",
     uploadTooLargeError: "This file is too large to upload. Try a smaller workbook.",
@@ -381,6 +409,8 @@ export const messages: Record<Locale, UiMessages> = {
     modeChartLabel: "图表",
     clarificationSelectedLabel: "已确认字段",
     followupLabel: "继续问",
+    followupContinueNextStepLabel: "继续下一步",
+    followupContinueNextStepSubmittedLabel: "继续到下一张 sheet，沿用当前分析口径。",
     followupSuggestionSwitchToChart: "把这个结果改成图表展示。",
     followupSuggestionSwitchToText: "把这个结果改成纯文字结论。",
     followupSuggestionRefineTop3: "保持当前口径，只看前 3 个。",
@@ -482,6 +512,18 @@ export const messages: Record<Locale, UiMessages> = {
     sheetSwitchReasonFollowupAnotherLabel: "根据追问“另一个 sheet”自动切换",
     sheetSwitchReasonFollowupExplicitLabel: "根据追问中明确指定的 sheet 切换",
     sheetSwitchReasonFollowupPreviousLabel: "根据追问“上一个 sheet”自动切换",
+    analysisAnchorLabel: "沿用口径",
+    analysisAnchorHint: "本轮已沿用上一轮的分析口径继续回答。",
+    taskStepsLabel: "任务步骤",
+    taskCurrentStepLabel: "当前步骤",
+    taskStepPendingLabel: "待执行",
+    taskStepCurrentLabel: "进行中",
+    taskStepCompletedLabel: "已完成",
+    taskStepFailedLabel: "失败",
+    stepComparisonLabel: "步骤对照",
+    stepComparisonPreviousLabel: "上一步",
+    stepComparisonCurrentLabel: "当前步骤",
+    stepComparisonIndependentHint: "两个步骤分别在各自 sheet 独立计算，不代表跨 sheet join 结果。",
     uploadError: "上传失败",
     uploadInvalidFileError: "仅支持上传 .xlsx、.xls 和 .csv 文件。",
     uploadTooLargeError: "当前文件过大，暂时无法上传，请换一个更小的工作簿。",
@@ -560,6 +602,8 @@ export const messages: Record<Locale, UiMessages> = {
     modeChartLabel: "チャート",
     clarificationSelectedLabel: "確認した列",
     followupLabel: "続けて質問",
+    followupContinueNextStepLabel: "次のステップへ",
+    followupContinueNextStepSubmittedLabel: "同じ分析スコープで次のシートへ進める。",
     followupSuggestionSwitchToChart: "この結果をチャート表示に切り替える。",
     followupSuggestionSwitchToText: "この結果をテキスト要約に切り替える。",
     followupSuggestionRefineTop3: "同じ条件のまま Top 3 に絞る。",
@@ -662,6 +706,18 @@ export const messages: Record<Locale, UiMessages> = {
     sheetSwitchReasonFollowupAnotherLabel: "フォローアップで別シート指定があったため",
     sheetSwitchReasonFollowupExplicitLabel: "フォローアップで明示シート指定があったため",
     sheetSwitchReasonFollowupPreviousLabel: "フォローアップで前のシート指定があったため",
+    analysisAnchorLabel: "スコープ継続",
+    analysisAnchorHint: "この回答は前の手順と同じ分析スコープを引き継いでいます。",
+    taskStepsLabel: "タスク手順",
+    taskCurrentStepLabel: "現在の手順",
+    taskStepPendingLabel: "未実行",
+    taskStepCurrentLabel: "実行中",
+    taskStepCompletedLabel: "完了",
+    taskStepFailedLabel: "失敗",
+    stepComparisonLabel: "ステップ比較",
+    stepComparisonPreviousLabel: "前のステップ",
+    stepComparisonCurrentLabel: "現在のステップ",
+    stepComparisonIndependentHint: "各ステップはシートごとに独立計算されています。クロスシート join 結果ではありません。",
     uploadError: "アップロード失敗",
     uploadInvalidFileError: ".xlsx、.xls、.csv ファイルのみアップロードできます。",
     uploadTooLargeError: "このファイルは大きすぎてアップロードできません。より小さいワークブックを試してください。",

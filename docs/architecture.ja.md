@@ -42,9 +42,13 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
   - 直近ターンの pipeline summary を保持
   - semantic な文脈とシート文脈の継承
   - clarification ループ
+  - 順次 multi-sheet 分析の task step 記憶
+  - follow-up action による「次のステップへ」ルーティング
+  - analysis anchor 引き継ぎによるスコープ安定化
 - フロントエンド上の実行可視化
   - 実行パイプラインの可視化
   - sheet routing summary
+  - 前ステップ vs 現ステップ比較カード（join なし）
   - result table / detail table / simple chart
   - structured answer segments
   - `mode = auto / text / chart`
@@ -99,6 +103,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
   HTTP request / response contract
 - `apps/api/app/observability.py`
   `X-Request-ID` と構造化ログ補助
+  task step イベントログ（`task_step_started` / `task_step_completed` / `task_step_failed`）
 - `apps/api/app/api/routes/files.py`
   upload、sheet list、preview endpoint
 - `apps/api/app/api/routes/spreadsheet.py`
@@ -197,6 +202,8 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - analysis intent summary
 - 直近の `sheet_index / sheet_name`
 - clarification resolution payload
+- 順次ワークフローの task step と current step id
+- follow-up スコープ再利用のための analysis anchor スナップショット
 
 ## 5. フロントエンド構成
 

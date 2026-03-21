@@ -208,6 +208,16 @@ def _safe_list_of_str(value: Any) -> list[str]:
     return [str(item) for item in value if str(item or "").strip()]
 
 
+def _safe_list_of_dict(value: Any, *, limit: int = 8) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    output: list[dict[str, Any]] = []
+    for item in value[: max(1, int(limit))]:
+        if isinstance(item, dict):
+            output.append(dict(item))
+    return output
+
+
 def _safe_clarification_resolution(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -223,6 +233,113 @@ def _safe_clarification_resolution(value: Any) -> dict[str, Any] | None:
     if source_field:
         payload["source_field"] = source_field
     return payload
+
+
+def _safe_anchor_filters(value: Any, *, limit: int = 3) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    filters: list[dict[str, str]] = []
+    for item in value[: max(1, int(limit))]:
+        if not isinstance(item, dict):
+            continue
+        column = str(item.get("column") or item.get("col") or "").strip()
+        op = str(item.get("op") or "=").strip() or "="
+        item_value = str(item.get("value") or "").strip()
+        if not column or not item_value:
+            continue
+        filters.append(
+            {
+                "column": column,
+                "op": op,
+                "value": item_value,
+            }
+        )
+    return filters
+
+
+def _safe_analysis_anchor(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    payload: dict[str, Any] = {
+        "intent": str(value.get("intent") or "").strip(),
+        "metric_column": str(value.get("metric_column") or "").strip(),
+        "metric_agg": str(value.get("metric_agg") or "").strip(),
+        "metric_alias": str(value.get("metric_alias") or "").strip(),
+        "dimension_column": str(value.get("dimension_column") or "").strip(),
+        "time_column": str(value.get("time_column") or "").strip(),
+        "time_grain": str(value.get("time_grain") or "").strip(),
+        "filters": _safe_anchor_filters(value.get("filters")),
+    }
+    selection_plan = _safe_dict(value.get("selection_plan"))
+    transform_plan = _safe_dict(value.get("transform_plan"))
+    chart_spec = _safe_dict(value.get("chart_spec"))
+    if selection_plan:
+        payload["selection_plan"] = selection_plan
+    if transform_plan:
+        payload["transform_plan"] = transform_plan
+    if chart_spec:
+        payload["chart_spec"] = chart_spec
+    normalized_payload: dict[str, Any] = {}
+    for key, item in payload.items():
+        if item is None:
+            continue
+        if isinstance(item, str) and not item.strip():
+            continue
+        if isinstance(item, list) and not item:
+            continue
+        normalized_payload[key] = item
+    payload = normalized_payload
+    if not payload:
+        return None
+    if not any(key in payload for key in {"metric_column", "dimension_column", "time_column", "filters", "intent"}):
+        return None
+    return payload
+
+
+def _derive_analysis_anchor_from_turn(
+    *,
+    intent: str,
+    pipeline: dict[str, Any],
+    pipeline_summary: dict[str, Any],
+    chart_spec: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    selection_plan = _safe_dict(pipeline.get("selection_plan")) or {}
+    transform_plan = _safe_dict(pipeline.get("transform_plan")) or {}
+    metrics = transform_plan.get("metrics") if isinstance(transform_plan.get("metrics"), list) else []
+    first_metric = metrics[0] if metrics and isinstance(metrics[0], dict) else {}
+    groupby = transform_plan.get("groupby") if isinstance(transform_plan.get("groupby"), list) else []
+    derived_columns = transform_plan.get("derived_columns") if isinstance(transform_plan.get("derived_columns"), list) else []
+
+    time_column = ""
+    time_grain = ""
+    for item in derived_columns:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("kind") or "") != "date_bucket":
+            continue
+        time_column = str(item.get("source_col") or "").strip()
+        time_grain = str(item.get("grain") or "").strip()
+        if time_column or time_grain:
+            break
+
+    anchor_payload: dict[str, Any] = {
+        "intent": str(intent or pipeline_summary.get("intent") or "").strip(),
+        "metric_column": str(first_metric.get("col") or "").strip(),
+        "metric_agg": str(first_metric.get("agg") or "").strip(),
+        "metric_alias": str(first_metric.get("as_name") or "").strip(),
+        "dimension_column": str(groupby[0] or "").strip() if groupby else "",
+        "time_column": time_column,
+        "time_grain": time_grain,
+        "filters": _safe_anchor_filters(selection_plan.get("filters")),
+    }
+    if selection_plan:
+        anchor_payload["selection_plan"] = selection_plan
+    if transform_plan:
+        anchor_payload["transform_plan"] = transform_plan
+    safe_chart_spec = _safe_dict(pipeline.get("chart_spec")) or chart_spec or {}
+    if safe_chart_spec:
+        anchor_payload["chart_spec"] = safe_chart_spec
+    return _safe_analysis_anchor(anchor_payload)
 
 
 def _build_visited_sheets(turns: list[dict[str, Any]], *, limit: int = 6) -> list[dict[str, Any]]:
@@ -416,6 +533,7 @@ class ConversationStore:
         recent_sheet_trajectory = _build_recent_sheet_trajectory(session.turns)
         previous_sheet_index, previous_sheet_name = _previous_sheet_from_trajectory(recent_sheet_trajectory)
         sheet_reference_hint = _sheet_reference_hint(chat_text)
+        analysis_anchor = _safe_analysis_anchor(last_turn.get("analysis_anchor"))
         payload = {
             "conversation_id": session.conversation_id,
             "turn_count": len(session.turns),
@@ -440,6 +558,9 @@ class ConversationStore:
             "last_chart_spec": _safe_dict(last_turn.get("chart_spec")),
             "last_result_columns": _safe_list_of_str(last_turn.get("result_columns")),
             "last_result_row_count": int(last_turn.get("result_row_count") or 0),
+            "last_task_steps": _safe_list_of_dict(last_turn.get("task_steps")),
+            "last_current_step_id": str(last_turn.get("current_step_id") or ""),
+            "analysis_anchor": analysis_anchor,
             "last_turn": last_turn,
             "recent_turns": recent_turns,
             "recent_pipeline_history": recent_pipeline_history,
@@ -477,20 +598,30 @@ def build_turn_summary(
     sheet_routing = (pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}
     sheet_sequence = (pipeline.get("sheet_sequence") or {}) if isinstance(pipeline.get("sheet_sequence"), dict) else {}
     sheet_switch_reason = str(sheet_sequence.get("last_sheet_switch_reason") or sheet_routing.get("reason") or "")
+    turn_intent = analysis_intent_kind(planner, fallback=str((planner or {}).get("intent") or ""))
+    analysis_anchor = _derive_analysis_anchor_from_turn(
+        intent=turn_intent,
+        pipeline=pipeline,
+        pipeline_summary=pipeline_summary,
+        chart_spec=chart_spec,
+    ) or _safe_analysis_anchor(pipeline.get("analysis_anchor"))
     return {
         "question": _truncate_text(question, 300),
         "requested_mode": requested_mode,
         "mode": result_mode,
-        "intent": analysis_intent_kind(planner, fallback=str((planner or {}).get("intent") or "")),
+        "intent": turn_intent,
         "analysis_intent": analysis_intent_payload(planner),
         "sheet_index": int(pipeline.get("source_sheet_index") or ((pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}).get("resolved_sheet_index") or 1),
         "sheet_name": str(pipeline.get("source_sheet_name") or ((pipeline.get("sheet_routing") or {}) if isinstance(pipeline.get("sheet_routing"), dict) else {}).get("resolved_sheet_name") or ""),
         "sheet_switch_reason": sheet_switch_reason,
+        "task_steps": _safe_list_of_dict(pipeline.get("task_steps")),
+        "current_step_id": str(pipeline.get("current_step_id") or ""),
         "answer_summary": _truncate_text(analysis_text or answer, 240),
         "pipeline_summary": pipeline_summary,
         "selection_plan": pipeline.get("selection_plan"),
         "transform_plan": pipeline.get("transform_plan"),
         "chart_spec": pipeline.get("chart_spec") or chart_spec,
+        "analysis_anchor": analysis_anchor or {},
         "result_columns": pipeline.get("result_columns") or [],
         "result_row_count": int(pipeline.get("result_row_count") or 0),
         "status": str(pipeline.get("status") or "ok"),

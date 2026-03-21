@@ -83,6 +83,7 @@ def build_success_pipeline(
             "last_mode": str(followup_context.get("last_mode") or ""),
             "last_intent": str(((followup_context.get("last_turn") or {}) if isinstance(followup_context.get("last_turn"), dict) else {}).get("intent") or ""),
             "last_pipeline_summary": followup_context.get("last_pipeline_summary") if isinstance(followup_context.get("last_pipeline_summary"), dict) else {},
+            "analysis_anchor": followup_context.get("analysis_anchor") if isinstance(followup_context.get("analysis_anchor"), dict) else {},
         }
 
     if selection_stage.clarification is not None:

@@ -123,6 +123,7 @@ export function useConversation(options: {
     requestQuestion?: string;
     displayQuestion?: string;
     clarificationResolution?: ClarificationResolution | null;
+    followupAction?: "continue_next_step" | null;
   }): Promise<void> {
     if (!workbookContext.value?.workbook.value) {
       sseChat.errorMessage.value = options.ui.value.missingFile;
@@ -180,6 +181,7 @@ export function useConversation(options: {
         locale: options.locale.value,
         conversation_id: conversationId.value,
         clarification_resolution: normalizedInput.clarificationResolution || null,
+        followup_action: normalizedInput.followupAction || null,
       },
       {
         onMessage: (payload) => {
@@ -221,6 +223,19 @@ export function useConversation(options: {
     });
   }
 
+  async function handleContinueNextStep(payload: { messageId: string }): Promise<void> {
+    const sourceQuestion = findPreviousUserQuestion(payload.messageId);
+    if (!sourceQuestion) {
+      sseChat.errorMessage.value = options.ui.value.clarificationExpiredError;
+      return;
+    }
+    await submitQuestion({
+      requestQuestion: sourceQuestion,
+      displayQuestion: options.ui.value.followupContinueNextStepSubmittedLabel,
+      followupAction: "continue_next_step",
+    });
+  }
+
   return {
     question,
     composerFocusToken,
@@ -236,6 +251,7 @@ export function useConversation(options: {
     applySuggestedFollowup,
     submitQuestion,
     handleClarificationSelect,
+    handleContinueNextStep,
   };
 }
 

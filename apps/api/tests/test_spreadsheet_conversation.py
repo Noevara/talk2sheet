@@ -119,6 +119,8 @@ async def test_stream_chat_persists_conversation_and_passes_followup_context(tmp
     assert first_events[1]["pipeline"]["observability"]["multi_sheet_detected"] == 0
     assert first_events[1]["pipeline"]["observability"]["clarification_sheet_count"] == 0
     assert first_events[1]["pipeline"]["observability"]["sheet_switch_count"] == 0
+    assert first_events[1]["pipeline"]["task_steps"] == []
+    assert first_events[1]["pipeline"]["current_step_id"] == ""
 
     second_events = await _collect_events(
         path=csv_path,
@@ -145,10 +147,15 @@ async def test_stream_chat_persists_conversation_and_passes_followup_context(tmp
     assert second_context["last_turn"]["question"] == "How many rows are in this sheet?"
     assert second_context["last_turn"]["intent"] == "row_count"
     assert second_context["last_turn"]["analysis_intent"]["kind"] == "row_count"
+    assert isinstance(second_context.get("analysis_anchor"), dict)
+    assert second_context["analysis_anchor"]["intent"] == "row_count"
+    assert second_context["analysis_anchor"]["metric_agg"] == "count_rows"
     assert len(second_context["recent_pipeline_history"]) == 1
     assert second_context["recent_pipeline_history"][0]["pipeline_summary"]["intent"] == "row_count"
     assert second_context["recent_pipeline_history"][0]["pipeline_summary"]["analysis_intent"]["kind"] == "row_count"
     assert second_context["recent_pipeline_history"][0]["execution_disclosure"]["data_scope"] == "exact_full_table"
+    assert second_events[1]["pipeline"]["analysis_anchor_reused"] is True
+    assert isinstance(second_events[1]["pipeline"]["analysis_anchor"], dict)
 
     session = conversation_store.get_session(first_conversation_id)
     assert session is not None
@@ -272,6 +279,9 @@ async def test_stream_chat_returns_multi_sheet_clarification_for_cross_sheet_que
     assert events[1]["pipeline"]["observability"]["sheet_switch_count"] == 0
     assert events[1]["pipeline"]["observability"]["multi_sheet_failure_reason"] == "cross_sheet_join_not_supported"
     assert events[1]["pipeline"]["observability"]["multi_sheet_top_failure_reasons"]["cross_sheet_join_not_supported"] >= 1
+    assert len(events[1]["pipeline"]["task_steps"]) == 2
+    assert events[1]["pipeline"]["task_steps"][0]["status"] == "current"
+    assert events[1]["pipeline"]["current_step_id"] == "sheet-1"
     assert "multiple sheets" in str(events[2]["answer"]).lower()
 
 
@@ -359,9 +369,182 @@ async def test_stream_chat_followup_can_switch_to_another_sheet_sequentially(tmp
     assert second_events[0]["meta"]["sheet_routing"]["reason"] == "followup_switch_to_another_sheet"
     assert second_events[0]["meta"]["sheet_sequence"]["switched_from_previous"] is True
     assert second_events[0]["meta"]["sheet_sequence"]["previous_sheet_index"] == 1
+    assert len(second_events[0]["meta"]["task_steps"]) >= 2
+    assert second_events[0]["meta"]["current_step_id"] == "sheet-2"
     assert second_events[1]["pipeline"]["sheet_sequence"]["last_sheet_switch_reason"] == "followup_switch_to_another_sheet"
     assert second_events[1]["pipeline"]["source_sheet_index"] == 2
     assert second_events[1]["pipeline"]["observability"]["sheet_switch_count"] == 1
+    assert second_events[1]["pipeline"]["task_steps"][0]["status"] == "completed"
+    assert second_events[1]["pipeline"]["task_steps"][1]["status"] == "current"
+    assert second_events[1]["pipeline"]["step_comparison"]["previous_step"]["sheet_index"] == 1
+    assert second_events[1]["pipeline"]["step_comparison"]["current_step"]["sheet_index"] == 2
+    assert second_events[1]["pipeline"]["step_comparison"]["independent_scopes"] is True
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_followup_action_continue_next_step_routes_to_pending_sheet(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_continue_next_step.xlsx"
+    _write_workbook(workbook_path)
+    question = "Join Sales and Users by email and show conversion."
+
+    clarification_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-next-step",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+    conversation_id = str(clarification_events[0]["conversation_id"])
+    assert clarification_events[1]["pipeline"]["status"] == "clarification"
+
+    resolved_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-next-step",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+        clarification_resolution={
+            "kind": "sheet_resolution",
+            "selected_value": "Sales",
+        },
+    )
+    assert resolved_events[0]["meta"]["resolved_sheet_index"] == 1
+    assert resolved_events[1]["pipeline"]["current_step_id"] == "sheet-1"
+
+    next_step_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-next-step",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+        followup_action="continue_next_step",
+    )
+
+    assert next_step_events[0]["meta"]["resolved_sheet_index"] == 2
+    assert next_step_events[0]["meta"]["resolved_sheet_name"] == "Users"
+    assert next_step_events[0]["meta"]["followup_action"] == "continue_next_step"
+    assert next_step_events[0]["meta"]["followup_action_target_sheet_index"] == 2
+    assert next_step_events[1]["pipeline"]["sheet_routing"]["reason"] == "clarification_resolution"
+    assert next_step_events[1]["pipeline"]["current_step_id"] == "sheet-2"
+    assert next_step_events[1]["pipeline"]["task_steps"][0]["status"] == "completed"
+    assert next_step_events[1]["pipeline"]["task_steps"][1]["status"] == "current"
+    assert next_step_events[1]["pipeline"]["observability"]["followup_action"] == "continue_next_step"
+    assert next_step_events[1]["pipeline"]["observability"]["followup_action_applied"] == 1
+    assert next_step_events[1]["pipeline"]["observability"]["followup_action_target_sheet_index"] == 2
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_started_count"] == 1
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_completed_count"] == 1
+    assert len(next_step_events[1]["pipeline"]["observability"]["task_step_events"]) == 2
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_events"][0]["event"] == "task_step_completed"
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_events"][0]["step_id"] == "sheet-1"
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_events"][1]["event"] == "task_step_started"
+    assert next_step_events[1]["pipeline"]["observability"]["task_step_events"][1]["step_id"] == "sheet-2"
+    assert next_step_events[1]["pipeline"]["step_comparison"]["previous_step"]["sheet_index"] == 1
+    assert next_step_events[1]["pipeline"]["step_comparison"]["current_step"]["sheet_index"] == 2
+    assert next_step_events[1]["pipeline"]["step_comparison"]["independent_scopes"] is True
+
+    next_step_context = planner.calls[1]["followup_context"]
+    assert isinstance(next_step_context, dict)
+    assert next_step_context["followup_action"] == "continue_next_step"
+    assert next_step_context["wants_sheet_switch"] is True
+    assert next_step_context["current_sheet_index"] == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_logs_task_step_failed_with_request_and_step_id(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+    import app.services.spreadsheet.service as service_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    recorded_task_step_events: list[dict[str, object]] = []
+
+    def _record_task_step_event(*_args, **kwargs):
+        recorded_task_step_events.append(dict(kwargs))
+
+    monkeypatch.setattr(service_module, "log_task_step_event", _record_task_step_event)
+
+    workbook_path = tmp_path / "workbook_task_step_failed.xlsx"
+    _write_workbook(workbook_path)
+    question = "Join Sales and Users by email and show conversion."
+
+    clarification_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-task-step-failed",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+    conversation_id = str(clarification_events[0]["conversation_id"])
+
+    await _collect_events(
+        path=workbook_path,
+        file_id="file-task-step-failed",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+        clarification_resolution={
+            "kind": "sheet_resolution",
+            "selected_value": "Sales",
+        },
+    )
+
+    def _failing_analyze(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service_module, "analyze", _failing_analyze)
+
+    failed_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-task-step-failed",
+        chat_text=question,
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+        followup_action="continue_next_step",
+    )
+
+    failed_request_id = str(failed_events[0]["request_id"])
+    emitted = [
+        item
+        for item in recorded_task_step_events
+        if str(item.get("request_id") or "") == failed_request_id
+    ]
+    emitted_names = [str(item.get("event") or "") for item in emitted]
+
+    assert "task_step_completed" in emitted_names
+    assert "task_step_started" in emitted_names
+    assert "task_step_failed" in emitted_names
+
+    failed_log = next(item for item in emitted if str(item.get("event") or "") == "task_step_failed")
+    assert failed_log["step_id"] == "sheet-2"
+    assert failed_log["step_status"] == "failed"
+    assert failed_log["followup_action"] == "continue_next_step"
+    assert failed_log["error_type"] == "RuntimeError"
 
 
 @pytest.mark.asyncio

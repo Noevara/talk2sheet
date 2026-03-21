@@ -14,6 +14,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - workbook レベルの multi-sheet 質問検出と分解ガイド
 - 自然言語によるスプレッドシート分析
 - clarification と follow-up 文脈を持つ複数ターン対話
+- シート横断の順次分析をタスクステップとして進めるワークフロー
 - 実行範囲、routing、結果テーブル、チャートの可視化
 - 回答コピー、CSV/PNG エクスポート、リロード後のローカルセッション復元
 - 英語 / 中国語 / 日本語のドキュメントと UI
@@ -23,6 +24,10 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - ファイルアップロード、sheet 一覧、プレビュー
 - ワークブック内で 1 つの対象シートを選ぶ auto routing
 - 同一 workbook 内の順次 multi-sheet 分析（A を先に分析し、その後 B に進む）
+- タスクステップカード（未実行 / 実行中 / 完了 / 失敗）
+- 「次のステップへ」ワンクリックで同スコープのまま次シートへ移動
+- analysis anchor の引き継ぎによる metric / dimension / time スコープの安定化
+- 前ステップ vs 現ステップ比較カード（A/B 比較、join なし）
 - multi-sheet 質問に対する clarification と分解ヒント
 - 行数、合計、平均、重複除去件数
 - 期間比較: 前期比 / 前年比、差分、比率
@@ -35,6 +40,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - 軽量な時系列 forecast
 - `auto / text / chart` mode 切替
 - ユーザーが確認できる分析パイプライン、sheet routing 要約、構造化回答
+- task_step 可観測イベント（`task_step_started` / `task_step_completed` / `task_step_failed`）と request_id の紐付け
 - routing 理由と説明文の可視化（`reason` / `explanation` / `explanation_code`）
 - シート/列の clarification カードを分けて表示し、選択後は自然な確認文で同じ質問を継続
 - 結果カードの「続けて質問」提案（入力欄へ自動反映後に編集して送信可能）

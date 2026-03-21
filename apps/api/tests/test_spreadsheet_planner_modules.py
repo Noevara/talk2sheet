@@ -279,6 +279,29 @@ def test_planner_rules_clarification_resolution_overrides_question_dimension_col
     assert context.planner_meta["clarification_resolution"]["selected_value"] == "Billing Item Name"
 
 
+def test_planner_rules_analysis_anchor_overrides_followup_core_columns() -> None:
+    context = build_heuristic_planning_context(
+        _billing_df(),
+        chat_text="继续分析",
+        requested_mode="auto",
+        followup_context={
+            "is_followup": True,
+            "analysis_anchor": {
+                "intent": "ranking",
+                "metric_column": "应付金额",
+                "dimension_column": "Service Name",
+                "time_column": "账单日期",
+                "time_grain": "month",
+            },
+        },
+    )
+
+    assert context.columns.amount_column == "应付金额"
+    assert context.columns.date_column == "账单日期"
+    assert context.columns.question_dimension_column == "Service Name"
+    assert context.columns.raw_question_dimension_column == "Service Name"
+
+
 def test_planner_runtime_builders_derive_reuse_and_action_contexts() -> None:
     context = build_heuristic_planning_context(
         _billing_df(),
@@ -319,6 +342,27 @@ def test_followup_context_builds_effective_question_and_preserve_flag() -> None:
     assert _preserve_previous_analysis("继续", followup_context) is True
     assert _preserve_previous_analysis("继续看前3个", followup_context) is False
     assert _preserve_previous_analysis("改成趋势", followup_context) is False
+
+
+def test_followup_context_effective_question_includes_analysis_anchor_summary() -> None:
+    followup_context = {
+        "is_followup": True,
+        "last_mode": "chart",
+        "last_turn": {"intent": "ranking", "question": "按分类统计费用排行"},
+        "analysis_anchor": {
+            "metric_column": "Amount",
+            "dimension_column": "Category",
+            "time_column": "Date",
+            "time_grain": "month",
+            "filters": [{"column": "Region", "op": "=", "value": "cn-sh"}],
+        },
+    }
+
+    effective = _effective_chat_text("继续看前3个", followup_context)
+
+    assert "Previous analysis anchor: metric=Amount" in effective
+    assert "dimension=Category" in effective
+    assert "time=Date(month)" in effective
 
 
 def test_followup_context_preserves_previous_analysis_for_sheet_switch_requests() -> None:
@@ -406,6 +450,32 @@ def test_followup_reuse_skips_previous_plan_when_sheet_has_switched() -> None:
     loaded = _load_previous_structured_turn(followup_context)
 
     assert loaded is None
+
+
+def test_followup_reuse_can_load_anchor_structured_turn_when_sheet_has_switched() -> None:
+    followup_context = _ranking_followup_context()
+    followup_context.update(
+        {
+            "last_sheet_index": 2,
+            "current_sheet_index": 1,
+            "analysis_anchor": {
+                "intent": "ranking",
+                "selection_plan": SelectionPlan(columns=["Category", "Amount"]).model_dump(),
+                "transform_plan": TransformPlan(
+                    groupby=["Category"],
+                    metrics=[Metric(agg="sum", col="Amount", as_name="value")],
+                    order_by=Sort(col="value", dir="desc"),
+                    top_k=5,
+                ).model_dump(),
+                "chart_spec": ChartSpec(type="bar", title="Ranking", x="Category", y="value", top_k=5).model_dump(),
+            },
+        }
+    )
+
+    loaded = _load_previous_structured_turn(followup_context)
+
+    assert loaded is not None
+    assert loaded[0] == "ranking"
 
 
 def test_heuristic_context_interpreter_resolves_previous_sheet_reference() -> None:

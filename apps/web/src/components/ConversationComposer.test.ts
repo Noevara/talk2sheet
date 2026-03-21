@@ -49,10 +49,9 @@ describe("ConversationComposer", () => {
     const helperTriggers = wrapper.findAll("button.helper-trigger");
     await helperTriggers[0].trigger("click");
 
-    expect(wrapper.text()).toContain("Summary");
-    expect(wrapper.text()).toContain("Ranking");
-    expect(wrapper.text()).toContain("Trend");
-    expect(wrapper.text()).toContain("Forecast");
+    expect(wrapper.text()).toContain("Single-sheet analysis");
+    expect(wrapper.text()).toContain("Sequential multi-sheet (A then B)");
+    expect(wrapper.text()).toContain("Boundary examples (not supported yet)");
 
     const promptButton = wrapper
       .findAll("button.helper-example-chip")

@@ -25,6 +25,7 @@ async def spreadsheet_chat_stream(request: SpreadsheetChatRequest, http_request:
         sheet_index=request.sheet_index,
         sheet_override=request.sheet_override,
         conversation_id=request.conversation_id,
+        followup_action=request.followup_action,
     )
     stored = file_storage.get(request.file_id)
     stream = stream_spreadsheet_chat(
@@ -37,6 +38,7 @@ async def spreadsheet_chat_stream(request: SpreadsheetChatRequest, http_request:
         locale=request.locale,
         conversation_id=request.conversation_id,
         clarification_resolution=request.clarification_resolution.model_dump() if request.clarification_resolution is not None else None,
+        followup_action=request.followup_action,
         request_id=request_id,
     )
     log_request_event(

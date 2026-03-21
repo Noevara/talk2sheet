@@ -41,6 +41,25 @@ def _clarified_dimension_column(
     return selected_value if selected_value in profiles else None
 
 
+def _analysis_anchor_column(
+    *,
+    followup_context: dict[str, Any] | None,
+    key: str,
+    profiles: dict[str, dict[str, Any]],
+    exclude: set[str] | None = None,
+) -> str | None:
+    exclude = exclude or set()
+    if not isinstance(followup_context, dict) or not bool(followup_context.get("is_followup")):
+        return None
+    anchor = followup_context.get("analysis_anchor")
+    if not isinstance(anchor, dict):
+        return None
+    value = str(anchor.get(key) or "").strip()
+    if not value or value in exclude:
+        return None
+    return value if value in profiles else None
+
+
 def _build_followup_planning_state(
     *,
     chat_text: str,
@@ -68,7 +87,12 @@ def _build_followup_planning_state(
     )
 
 
-def _resolve_core_columns(df: Any, profiles: dict[str, dict[str, Any]]) -> tuple[str | None, str | None, str | None, str | None]:
+def _resolve_core_columns(
+    df: Any,
+    profiles: dict[str, dict[str, Any]],
+    *,
+    followup_context: dict[str, Any] | None,
+) -> tuple[str | None, str | None, str | None, str | None]:
     amount_column = _find_amount_column(profiles)
     date_column = _find_date_column(profiles)
     category_column = _find_category_column(profiles, exclude={col for col in (amount_column, date_column) if col})
@@ -77,6 +101,20 @@ def _resolve_core_columns(df: Any, profiles: dict[str, dict[str, Any]]) -> tuple
         profiles,
         exclude={col for col in (amount_column,) if col},
     )
+    anchored_amount = _analysis_anchor_column(
+        followup_context=followup_context,
+        key="metric_column",
+        profiles=profiles,
+    )
+    anchored_date = _analysis_anchor_column(
+        followup_context=followup_context,
+        key="time_column",
+        profiles=profiles,
+    )
+    if not amount_column and anchored_amount is not None:
+        amount_column = anchored_amount
+    if not date_column and anchored_date is not None:
+        date_column = anchored_date
     return amount_column, date_column, category_column, single_transaction_column
 
 
@@ -138,6 +176,16 @@ def _resolve_question_dimension_columns(
         region_column=region_column,
         category_column=category_column,
     )
+    if raw_question_dimension_column or question_dimension_column:
+        return raw_question_dimension_column, question_dimension_column
+    anchored_dimension = _analysis_anchor_column(
+        followup_context=followup_context,
+        key="dimension_column",
+        profiles=profiles,
+        exclude=exclude,
+    )
+    if anchored_dimension is not None:
+        return anchored_dimension, anchored_dimension
     return raw_question_dimension_column, question_dimension_column
 
 
@@ -149,7 +197,11 @@ def _build_resolved_columns(
     effective_chat_text: str,
     followup_context: dict[str, Any] | None = None,
 ) -> ResolvedColumns:
-    amount_column, date_column, category_column, single_transaction_column = _resolve_core_columns(df, profiles)
+    amount_column, date_column, category_column, single_transaction_column = _resolve_core_columns(
+        df,
+        profiles,
+        followup_context=followup_context,
+    )
     service_column, region_column, item_preferred_column, item_column = _resolve_named_dimension_columns(
         profiles,
         amount_column=amount_column,

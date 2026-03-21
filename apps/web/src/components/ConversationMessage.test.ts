@@ -199,6 +199,33 @@ describe("ConversationMessage", () => {
     expect(wrapper.text()).toContain("Switch reason: Follow-up requested another sheet");
   });
 
+  it("renders scope-carryover notice when analysis anchor is reused", () => {
+    const message: ChatMessage = {
+      id: "assistant-anchor-reused",
+      role: "assistant",
+      text: "Continue with the same scope.",
+      clarification: null,
+      pipeline: {
+        analysis_anchor_reused: true,
+        analysis_anchor: {
+          intent: "ranking",
+          metric_column: "Amount",
+          dimension_column: "Service Name",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Scope carried over");
+    expect(wrapper.text()).toContain("keeps the same analysis scope");
+  });
+
   it("renders previous-sheet switch reason when routed back", () => {
     const message: ChatMessage = {
       id: "assistant-sheet-switch-previous",
@@ -225,6 +252,125 @@ describe("ConversationMessage", () => {
     });
 
     expect(wrapper.text()).toContain("Switch reason: Follow-up requested the previous sheet");
+  });
+
+  it("renders task steps with current and completed statuses", () => {
+    const message: ChatMessage = {
+      id: "assistant-task-steps",
+      role: "assistant",
+      text: "Task steps updated.",
+      clarification: null,
+      pipeline: {
+        current_step_id: "sheet-2",
+        task_steps: [
+          {
+            step_id: "sheet-1",
+            sheet_index: 1,
+            sheet_name: "Sales",
+            status: "completed",
+          },
+          {
+            step_id: "sheet-2",
+            sheet_index: 2,
+            sheet_name: "Users",
+            status: "current",
+          },
+        ],
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Task steps");
+    expect(wrapper.text()).toContain("Sales (#1)");
+    expect(wrapper.text()).toContain("Users (#2)");
+    expect(wrapper.text()).toContain("Current step");
+    expect(wrapper.text()).toContain("Completed");
+    expect(wrapper.text()).toContain("In progress");
+  });
+
+  it("renders continue-next-step action and emits click event", async () => {
+    const message: ChatMessage = {
+      id: "assistant-task-next-step",
+      role: "assistant",
+      text: "Step progress updated.",
+      clarification: null,
+      pipeline: {
+        current_step_id: "sheet-1",
+        task_steps: [
+          {
+            step_id: "sheet-1",
+            sheet_index: 1,
+            sheet_name: "Sales",
+            status: "current",
+          },
+          {
+            step_id: "sheet-2",
+            sheet_index: 2,
+            sheet_name: "Users",
+            status: "pending",
+          },
+        ],
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    const button = wrapper.find("button.message-action-next-step");
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("Continue to next step");
+    expect(button.text()).toContain("Users (#2)");
+
+    await button.trigger("click");
+    expect(wrapper.emitted("continueNextStep")).toEqual([[]]);
+  });
+
+  it("renders previous-vs-current step comparison for sequential multi-sheet results", () => {
+    const message: ChatMessage = {
+      id: "assistant-step-comparison",
+      role: "assistant",
+      text: "Users trend computed.",
+      clarification: null,
+      pipeline: {
+        step_comparison: {
+          previous_step: {
+            sheet_index: 1,
+            sheet_name: "Sales",
+            answer_summary: "Sales trend peaks in February.",
+          },
+          current_step: {
+            sheet_index: 2,
+            sheet_name: "Users",
+            answer_summary: "User signup trend stays stable.",
+          },
+          independent_scopes: true,
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Step comparison");
+    expect(wrapper.text()).toContain("Previous step · Sales (#1)");
+    expect(wrapper.text()).toContain("Sales trend peaks in February.");
+    expect(wrapper.text()).toContain("Current step · Users (#2)");
+    expect(wrapper.text()).toContain("User signup trend stays stable.");
+    expect(wrapper.text()).toContain("not a cross-sheet join result");
   });
 
   it("renders multi-sheet boundary and mentioned sheets when out of scope", () => {

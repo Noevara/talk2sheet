@@ -60,3 +60,4 @@ class SpreadsheetChatRequest(BaseModel):
     locale: str = "en"
     conversation_id: str | None = None
     clarification_resolution: ClarificationResolution | None = None
+    followup_action: Literal["continue_next_step"] | None = None

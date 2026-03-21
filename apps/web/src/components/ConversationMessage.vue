@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   clarificationSelect: [value: string];
   followupSelect: [question: string];
+  continueNextStep: [];
 }>();
 
 const copyState = ref<"idle" | "done">("idle");
@@ -83,6 +84,33 @@ function formatSheetSwitchReason(reason: string): string {
     return props.ui.sheetSwitchReasonFollowupPreviousLabel;
   }
   return "";
+}
+
+function normalizeTaskStepStatus(status: string): "pending" | "current" | "completed" | "failed" {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "current") {
+    return "current";
+  }
+  if (normalized === "completed") {
+    return "completed";
+  }
+  if (normalized === "failed") {
+    return "failed";
+  }
+  return "pending";
+}
+
+function formatTaskStepStatusLabel(status: "pending" | "current" | "completed" | "failed"): string {
+  if (status === "current") {
+    return props.ui.taskStepCurrentLabel;
+  }
+  if (status === "completed") {
+    return props.ui.taskStepCompletedLabel;
+  }
+  if (status === "failed") {
+    return props.ui.taskStepFailedLabel;
+  }
+  return props.ui.taskStepPendingLabel;
 }
 
 const detailRows = computed(() => {
@@ -597,6 +625,131 @@ const sourceSheetMeta = computed(() => {
   };
 });
 
+const analysisAnchorNotice = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const reused = pipeline.analysis_anchor_reused === true;
+  const anchor = asRecord(pipeline.analysis_anchor);
+  if (!reused || !anchor) {
+    return null;
+  }
+  return {
+    label: props.ui.analysisAnchorLabel,
+    hint: props.ui.analysisAnchorHint,
+  };
+});
+
+const taskStepsMeta = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const rawSteps = Array.isArray(pipeline.task_steps) ? (pipeline.task_steps as unknown[]) : [];
+  const steps = rawSteps
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item, index) => {
+      const stepId = readString(item.step_id) || `step-${index + 1}`;
+      const sheetIndex = readNumber(item.sheet_index);
+      const sheetName = readString(item.sheet_name);
+      const status = normalizeTaskStepStatus(readString(item.status));
+      return {
+        stepId,
+        status,
+        statusLabel: formatTaskStepStatusLabel(status),
+        sheetLabel: formatSheetDescriptor(sheetName, sheetIndex),
+      };
+    })
+    .filter((item) => item.sheetLabel !== "—");
+  if (!steps.length) {
+    return null;
+  }
+
+  const currentStepId = readString(pipeline.current_step_id);
+  const hasExplicitCurrentStep = Boolean(currentStepId && steps.some((step) => step.stepId === currentStepId));
+  return {
+    currentStepId: hasExplicitCurrentStep ? currentStepId : "",
+    steps,
+  };
+});
+
+const continueNextStepMeta = computed(() => {
+  if (props.message.role !== "assistant" || props.message.status === "streaming" || Boolean(clarification.value)) {
+    return null;
+  }
+  const stepState = taskStepsMeta.value;
+  if (!stepState || stepState.steps.length <= 1) {
+    return null;
+  }
+  const currentIndex = stepState.currentStepId
+    ? stepState.steps.findIndex((step) => step.stepId === stepState.currentStepId)
+    : -1;
+  let target =
+    currentIndex >= 0 && currentIndex + 1 < stepState.steps.length
+      ? stepState.steps[currentIndex + 1]
+      : null;
+  if (target && !["pending", "failed"].includes(target.status)) {
+    target = null;
+  }
+  if (!target) {
+    target = stepState.steps.find((step) => step.status === "pending" || step.status === "failed") || null;
+  }
+  if (!target) {
+    return null;
+  }
+  return {
+    targetLabel: target.sheetLabel,
+  };
+});
+
+const stepComparisonMeta = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const comparison = asRecord(pipeline.step_comparison);
+  if (!comparison) {
+    return null;
+  }
+  const previous = asRecord(comparison.previous_step);
+  const current = asRecord(comparison.current_step);
+  if (!previous || !current) {
+    return null;
+  }
+  const previousSheetLabel = formatSheetDescriptor(readString(previous.sheet_name), readNumber(previous.sheet_index));
+  const currentSheetLabel = formatSheetDescriptor(readString(current.sheet_name), readNumber(current.sheet_index));
+  if (previousSheetLabel === "—" || currentSheetLabel === "—" || previousSheetLabel === currentSheetLabel) {
+    return null;
+  }
+  const previousSummary = readString(previous.answer_summary) || readString(previous.intent);
+  const currentSummary =
+    readString(current.answer_summary) ||
+    readString(current.intent) ||
+    readString(structuredConclusion.value) ||
+    readString(props.message.text);
+  if (!previousSummary || !currentSummary) {
+    return null;
+  }
+  return {
+    previousTitle: `${props.ui.stepComparisonPreviousLabel} · ${previousSheetLabel}`,
+    previousSummary,
+    currentTitle: `${props.ui.stepComparisonCurrentLabel} · ${currentSheetLabel}`,
+    currentSummary,
+    independentHint: comparison.independent_scopes === false ? "" : props.ui.stepComparisonIndependentHint,
+  };
+});
+
 const followupSuggestions = computed(() => {
   if (props.message.role !== "assistant" || props.message.status === "streaming" || Boolean(clarification.value)) {
     return [];
@@ -709,6 +862,54 @@ async function handleExportChart(): Promise<void> {
       <span v-if="sourceSheetMeta.switchReasonLabel" class="source-pill source-pill-subtle">
         {{ ui.sheetSwitchReasonLabel }}: {{ sourceSheetMeta.switchReasonLabel }}
       </span>
+    </div>
+
+    <div v-if="analysisAnchorNotice" class="message-anchor-notice">
+      <span class="source-pill source-pill-subtle">{{ analysisAnchorNotice.label }}: {{ analysisAnchorNotice.hint }}</span>
+    </div>
+
+    <div v-if="taskStepsMeta" class="message-task-steps">
+      <div class="section-label">{{ ui.taskStepsLabel }}</div>
+      <ol class="task-step-list">
+        <li
+          v-for="step in taskStepsMeta.steps"
+          :key="step.stepId"
+          class="task-step-item"
+          :class="[`task-step-${step.status}`, { 'task-step-active': taskStepsMeta.currentStepId === step.stepId }]"
+        >
+          <span class="task-step-main">{{ step.sheetLabel }}</span>
+          <span class="task-step-badges">
+            <span v-if="taskStepsMeta.currentStepId === step.stepId" class="task-step-current">{{ ui.taskCurrentStepLabel }}</span>
+            <span class="task-step-status">{{ step.statusLabel }}</span>
+          </span>
+        </li>
+      </ol>
+      <div v-if="continueNextStepMeta" class="task-step-actions">
+        <button
+          type="button"
+          class="message-action message-action-secondary message-action-next-step"
+          @click="emit('continueNextStep')"
+        >
+          {{ ui.followupContinueNextStepLabel }} · {{ continueNextStepMeta.targetLabel }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="stepComparisonMeta" class="message-step-comparison">
+      <div class="section-label">{{ ui.stepComparisonLabel }}</div>
+      <div class="step-comparison-grid">
+        <div class="step-comparison-card">
+          <div class="step-comparison-title">{{ stepComparisonMeta.previousTitle }}</div>
+          <p class="step-comparison-text">{{ stepComparisonMeta.previousSummary }}</p>
+        </div>
+        <div class="step-comparison-card step-comparison-card-current">
+          <div class="step-comparison-title">{{ stepComparisonMeta.currentTitle }}</div>
+          <p class="step-comparison-text">{{ stepComparisonMeta.currentSummary }}</p>
+        </div>
+      </div>
+      <div v-if="stepComparisonMeta.independentHint" class="routing-note">
+        {{ stepComparisonMeta.independentHint }}
+      </div>
     </div>
 
     <template v-if="message.role === 'assistant' && hasStructuredAnswer">
@@ -1006,6 +1207,10 @@ async function handleExportChart(): Promise<void> {
   margin-bottom: 0.62rem;
 }
 
+.message-anchor-notice {
+  margin-bottom: 0.62rem;
+}
+
 .source-pill {
   display: inline-flex;
   align-items: center;
@@ -1025,6 +1230,114 @@ async function handleExportChart(): Promise<void> {
 .source-pill-subtle {
   background: rgba(23, 50, 84, 0.08);
   color: rgba(23, 50, 84, 0.72);
+}
+
+.message-task-steps {
+  margin-bottom: 0.68rem;
+}
+
+.message-step-comparison {
+  margin-bottom: 0.72rem;
+}
+
+.step-comparison-grid {
+  display: grid;
+  gap: 0.46rem;
+}
+
+.step-comparison-card {
+  border-radius: 14px;
+  border: 1px solid rgba(18, 41, 74, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.48rem 0.58rem;
+}
+
+.step-comparison-card-current {
+  border-color: rgba(29, 95, 133, 0.24);
+  background: rgba(29, 95, 133, 0.08);
+}
+
+.step-comparison-title {
+  color: rgba(23, 50, 84, 0.74);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.28rem;
+}
+
+.step-comparison-text {
+  margin: 0;
+  color: #173254;
+  font-size: 0.82rem;
+  line-height: 1.42;
+}
+
+.task-step-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.task-step-actions {
+  margin-top: 0.5rem;
+}
+
+.task-step-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 14px;
+  border: 1px solid rgba(18, 41, 74, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.42rem 0.56rem;
+}
+
+.task-step-item.task-step-active {
+  border-color: rgba(29, 95, 133, 0.35);
+  background: rgba(29, 95, 133, 0.1);
+}
+
+.task-step-item.task-step-completed {
+  border-color: rgba(50, 122, 84, 0.24);
+}
+
+.task-step-item.task-step-failed {
+  border-color: rgba(200, 92, 60, 0.28);
+  background: rgba(200, 92, 60, 0.08);
+}
+
+.task-step-main {
+  color: #173254;
+  font-size: 0.82rem;
+}
+
+.task-step-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+}
+
+.task-step-current,
+.task-step-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+
+.task-step-current {
+  background: rgba(29, 95, 133, 0.16);
+  color: #1d5f85;
+}
+
+.task-step-status {
+  background: rgba(23, 50, 84, 0.08);
+  color: rgba(23, 50, 84, 0.74);
 }
 
 .message-role,
@@ -1310,6 +1623,13 @@ async function handleExportChart(): Promise<void> {
   padding: 0.34rem 0.62rem;
   font-size: 0.77rem;
   font-weight: 500;
+}
+
+.message-action-next-step {
+  border-radius: 14px;
+  padding: 0.34rem 0.66rem;
+  font-size: 0.77rem;
+  font-weight: 600;
 }
 
 .scope-label,
