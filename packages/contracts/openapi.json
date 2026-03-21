@@ -372,6 +372,13 @@
               }
             ],
             "title": "Columns"
+          },
+          "field_summary": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Field Summary"
           }
         },
         "type": "object",

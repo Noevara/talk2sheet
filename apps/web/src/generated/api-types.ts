@@ -11,6 +11,7 @@ export interface SheetDescriptor {
   name: string;
   rows?: number | null;
   columns?: number | null;
+  field_summary?: string[];
 }
 
 export interface UploadedFileResponse {

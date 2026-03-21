@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchPreview, streamSpreadsheetChat, uploadSpreadsheet } from "./api";
+import { fetchPreview, fetchWorkbookSheets, streamSpreadsheetChat, uploadSpreadsheet } from "./api";
 import { REQUEST_ID_HEADER } from "./requestId";
 
 const originalFetch = globalThis.fetch;
@@ -49,6 +49,23 @@ describe("api error formatting", () => {
     ) as typeof fetch;
 
     await fetchPreview("file-1", 1);
+
+    const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(requestInit.headers);
+    expect(headers.get(REQUEST_ID_HEADER)).toBeTruthy();
+  });
+
+  it("adds X-Request-ID to workbook sheets requests", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ file_id: "file-1", file_name: "demo.xlsx", file_type: "xlsx", sheets: [] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+    ) as typeof fetch;
+
+    await fetchWorkbookSheets("file-1");
 
     const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit;
     const headers = new Headers(requestInit.headers);

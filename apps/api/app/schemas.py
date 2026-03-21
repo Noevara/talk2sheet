@@ -15,6 +15,7 @@ class SheetDescriptor(BaseModel):
     name: str
     rows: int | None = None
     columns: int | None = None
+    field_summary: list[str] = Field(default_factory=list)
 
 
 class UploadedFileResponse(BaseModel):

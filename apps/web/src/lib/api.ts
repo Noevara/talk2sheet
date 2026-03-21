@@ -88,6 +88,11 @@ export async function fetchPreview(fileId: string, sheetIndex: number): Promise<
   return ensureJson<PreviewResponse>(response);
 }
 
+export async function fetchWorkbookSheets(fileId: string): Promise<UploadedFileResponse> {
+  const response = await apiFetch(`/files/${fileId}/sheets`);
+  return ensureJson<UploadedFileResponse>(response);
+}
+
 function emitSseChunk(chunk: string, onMessage: (payload: Record<string, unknown>) => void): void {
   const lines = chunk
     .split("\n")

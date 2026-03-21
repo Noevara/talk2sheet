@@ -526,6 +526,134 @@ button {
   transform: translateY(-1px);
 }
 
+.sheet-overview-stack {
+  margin-bottom: 0.9rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 242, 233, 0.7));
+  border: 1px solid rgba(18, 41, 74, 0.08);
+}
+
+.sheet-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.sheet-overview-head h3 {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(23, 50, 84, 0.62);
+}
+
+.sheet-overview-loading {
+  font-size: 0.75rem;
+  color: rgba(23, 50, 84, 0.55);
+}
+
+.sheet-overview-hint {
+  margin: 0.45rem 0 0;
+  color: rgba(23, 50, 84, 0.66);
+  font-size: 0.82rem;
+}
+
+.sheet-overview-error {
+  margin: 0.5rem 0 0;
+  padding: 0.58rem 0.68rem;
+  border-radius: 12px;
+  background: rgba(200, 92, 60, 0.12);
+  color: #8e3e28;
+  font-size: 0.8rem;
+}
+
+.sheet-overview-grid {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.sheet-overview-card {
+  text-align: left;
+  display: grid;
+  gap: 0.52rem;
+  padding: 0.72rem 0.76rem;
+  border-radius: 16px;
+  border: 1px solid rgba(18, 41, 74, 0.1);
+  background: rgba(255, 255, 255, 0.86);
+  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.sheet-overview-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(29, 95, 133, 0.24);
+}
+
+.sheet-overview-card-active {
+  border-color: rgba(29, 95, 133, 0.36);
+  background: linear-gradient(160deg, rgba(29, 95, 133, 0.12), rgba(239, 159, 52, 0.14));
+}
+
+.sheet-overview-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.sheet-overview-card-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #173254;
+}
+
+.sheet-overview-card-head small {
+  color: rgba(23, 50, 84, 0.58);
+}
+
+.sheet-overview-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.sheet-overview-card-metrics div {
+  padding: 0.52rem 0.58rem;
+  border-radius: 12px;
+  background: rgba(248, 242, 233, 0.84);
+}
+
+.sheet-overview-card-metrics span,
+.sheet-overview-card-summary span {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(23, 50, 84, 0.55);
+}
+
+.sheet-overview-card-metrics strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: #173254;
+}
+
+.sheet-overview-card-summary p {
+  margin: 0.3rem 0 0;
+  color: rgba(23, 50, 84, 0.78);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .preview-stats {
   display: flex;
   gap: 0.7rem;
@@ -795,6 +923,10 @@ button {
 
   .preview-dataset-band,
   .preview-empty-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sheet-overview-grid {
     grid-template-columns: 1fr;
   }
 

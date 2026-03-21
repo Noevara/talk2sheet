@@ -13,6 +13,8 @@ const props = defineProps<{
   showActiveSheetNamePill: boolean;
   uploadBusy: boolean;
   previewBusy: boolean;
+  workbookOverviewBusy: boolean;
+  workbookOverviewError: string;
   errorMessage: string;
 }>();
 
@@ -24,6 +26,18 @@ const emit = defineEmits<{
 function formatSheetName(sheetName: string, sheetIndex: number): string {
   const normalized = sheetName.trim();
   return normalized || `#${sheetIndex}`;
+}
+
+function formatMetricValue(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toLocaleString() : "—";
+}
+
+function formatFieldSummary(value: string[] | null | undefined): string {
+  const summary = Array.isArray(value) ? value.map((item) => String(item).trim()).filter((item) => item) : [];
+  if (!summary.length) {
+    return props.ui.sheetFieldSummaryEmpty;
+  }
+  return summary.join(" · ");
 }
 </script>
 
@@ -85,6 +99,45 @@ function formatSheetName(sheetName: string, sheetIndex: number): string {
             <small>#{{ sheet.index }}</small>
           </button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="props.workbook" class="sheet-overview-stack">
+      <div class="sheet-overview-head">
+        <h3>{{ props.ui.workbookOverviewTitle }}</h3>
+        <span v-if="props.workbookOverviewBusy" class="sheet-overview-loading">{{ props.ui.previewLoading }}</span>
+      </div>
+      <p class="sheet-overview-hint">{{ props.ui.workbookOverviewHint }}</p>
+      <p v-if="props.workbookOverviewError" class="sheet-overview-error">{{ props.workbookOverviewError }}</p>
+
+      <div class="sheet-overview-grid">
+        <button
+          v-for="sheet in props.workbook.sheets"
+          :key="`overview-${sheet.index}`"
+          type="button"
+          class="sheet-overview-card"
+          :class="{ 'sheet-overview-card-active': props.selectedSheetIndex === sheet.index }"
+          @click="emit('selectSheet', sheet.index)"
+        >
+          <div class="sheet-overview-card-head">
+            <strong :title="formatSheetName(sheet.name, sheet.index)">{{ formatSheetName(sheet.name, sheet.index) }}</strong>
+            <small>#{{ sheet.index }}</small>
+          </div>
+          <div class="sheet-overview-card-metrics">
+            <div>
+              <span>{{ props.ui.totalRowsLabel }}</span>
+              <strong>{{ formatMetricValue(sheet.rows) }}</strong>
+            </div>
+            <div>
+              <span>{{ props.ui.colsLoaded }}</span>
+              <strong>{{ formatMetricValue(sheet.columns) }}</strong>
+            </div>
+          </div>
+          <div class="sheet-overview-card-summary">
+            <span>{{ props.ui.sheetFieldSummaryLabel }}</span>
+            <p :title="formatFieldSummary(sheet.field_summary)">{{ formatFieldSummary(sheet.field_summary) }}</p>
+          </div>
+        </button>
       </div>
     </div>
 

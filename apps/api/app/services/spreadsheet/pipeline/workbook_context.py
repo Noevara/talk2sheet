@@ -39,7 +39,7 @@ def _read_workbook_context_cached(
     for descriptor in read_sheet_descriptors(path):
         df, sheet_name = read_default_frame(path, sheet_index=descriptor.index, nrows=preview_limit)
         df = attach_column_profiles(df)
-        total_rows = count_sheet_rows(path, sheet_index=descriptor.index, header_plan=None)
+        total_rows = int(descriptor.rows) if descriptor.rows is not None else count_sheet_rows(path, sheet_index=descriptor.index, header_plan=None)
         sheet_payloads.append(
             WorkbookSheetProfile(
                 sheet_index=int(descriptor.index),

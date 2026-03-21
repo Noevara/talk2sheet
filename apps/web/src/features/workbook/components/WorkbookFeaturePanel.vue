@@ -21,6 +21,8 @@ defineProps<{
     :show-active-sheet-name-pill="state.showActiveSheetNamePill.value"
     :upload-busy="state.uploadBusy.value"
     :preview-busy="state.previewBusy.value"
+    :workbook-overview-busy="state.workbookOverviewBusy.value"
+    :workbook-overview-error="state.workbookOverviewError.value"
     :error-message="errorMessage"
     @upload="state.handleFileSelection"
     @select-sheet="state.handleManualSheetSelect"

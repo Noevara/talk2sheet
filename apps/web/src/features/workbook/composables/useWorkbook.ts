@@ -1,7 +1,7 @@
 import { computed, ref, type ComputedRef } from "vue";
 
 import type { UiMessages } from "../../../i18n/messages";
-import { fetchPreview, uploadSpreadsheet } from "../../../lib/api";
+import { fetchPreview, fetchWorkbookSheets, uploadSpreadsheet } from "../../../lib/api";
 import { formatPreviewError, formatUploadError, isMissingWorkbookError } from "../../../lib/errorMessages";
 import type { PreviewResponse, UploadedFileResponse } from "../../../types";
 
@@ -28,6 +28,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
   const preview = ref<PreviewResponse | null>(null);
   const uploadBusy = ref(false);
   const previewBusy = ref(false);
+  const workbookOverviewBusy = ref(false);
+  const workbookOverviewError = ref("");
   const errorMessage = ref("");
 
   const activeSheetLabel = computed(() => {
@@ -39,6 +41,22 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
   const showActiveSheetNamePill = computed(() => {
     return Boolean(workbook.value && preview.value && activeSheetLabel.value !== workbook.value.file_name);
   });
+
+  async function refreshWorkbookSummary(fileId: string): Promise<void> {
+    workbookOverviewBusy.value = true;
+    workbookOverviewError.value = "";
+    try {
+      const summary = await fetchWorkbookSheets(fileId);
+      if (workbook.value && workbook.value.file_id !== fileId) {
+        return;
+      }
+      workbook.value = summary;
+    } catch (error) {
+      workbookOverviewError.value = formatPreviewError(error, options.ui.value);
+    } finally {
+      workbookOverviewBusy.value = false;
+    }
+  }
 
   async function loadPreview(
     sheetIndex: number,
@@ -94,8 +112,10 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
       workbook.value = uploaded;
       preview.value = null;
       pendingSheetOverride.value = false;
+      workbookOverviewError.value = "";
       options.resetConversation();
-      const firstSheet = uploaded.sheets[0]?.index || 1;
+      await refreshWorkbookSummary(uploaded.file_id);
+      const firstSheet = workbook.value?.sheets[0]?.index || uploaded.sheets[0]?.index || 1;
       await loadPreview(firstSheet, { resetConversation: false });
     } catch (error) {
       if (error instanceof Error && error.message === options.ui.value.uploadInvalidFileError) {
@@ -114,6 +134,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     selectedSheetIndex.value = snapshot.selectedSheetIndex || 1;
     pendingSheetOverride.value = snapshot.pendingSheetOverride;
     preview.value = snapshot.preview;
+    workbookOverviewError.value = "";
     errorMessage.value = "";
   }
 
@@ -131,6 +152,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     selectedSheetIndex.value = 1;
     pendingSheetOverride.value = false;
     preview.value = null;
+    workbookOverviewBusy.value = false;
+    workbookOverviewError.value = "";
     errorMessage.value = "";
   }
 
@@ -143,6 +166,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     errorMessage.value = "";
     try {
       preview.value = await fetchPreview(workbook.value.file_id, selectedSheetIndex.value);
+      await refreshWorkbookSummary(workbook.value.file_id);
       return true;
     } catch (error) {
       if (isMissingWorkbookError(error)) {
@@ -165,6 +189,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     preview,
     uploadBusy,
     previewBusy,
+    workbookOverviewBusy,
+    workbookOverviewError,
     errorMessage,
     activeSheetLabel,
     showActiveSheetNamePill,
@@ -172,6 +198,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     snapshotState,
     clearState,
     revalidateRestoredState,
+    refreshWorkbookSummary,
     loadPreview,
     handleManualSheetSelect,
     clearPendingSheetOverride,

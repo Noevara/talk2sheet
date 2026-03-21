@@ -19,6 +19,8 @@ export interface UiMessages {
   uploadButton: string;
   uploading: string;
   workbookTitle: string;
+  workbookOverviewTitle: string;
+  workbookOverviewHint: string;
   workbookEmpty: string;
   fileIdLabel: string;
   fileTypeLabel: string;
@@ -58,6 +60,8 @@ export interface UiMessages {
   totalRowsLabel: string;
   previewRowsLabel: string;
   colsLoaded: string;
+  sheetFieldSummaryLabel: string;
+  sheetFieldSummaryEmpty: string;
   sheetOverridePendingLabel: string;
   scopeLabel: string;
   metadataLabel: string;
@@ -65,6 +69,9 @@ export interface UiMessages {
   requestedSheetLabel: string;
   resolvedSheetLabel: string;
   routingMethodLabel: string;
+  routingWhyLabel: string;
+  routingBoundaryLabel: string;
+  routingMentionedSheetsLabel: string;
   routingChangedLabel: string;
   routingMethodSingleSheetLabel: string;
   routingMethodExplicitLabel: string;
@@ -73,6 +80,10 @@ export interface UiMessages {
   routingMethodFollowupLabel: string;
   routingMethodAutoLabel: string;
   routingMethodRequestedLabel: string;
+  routingBoundarySingleSheetLabel: string;
+  routingBoundaryDetectedLabel: string;
+  routingBoundaryOutOfScopeLabel: string;
+  routingBoundaryOutOfScopeHint: string;
   filterSummaryLabel: string;
   topKSummaryLabel: string;
   trendGrainLabel: string;
@@ -127,6 +138,12 @@ export interface UiMessages {
   userLabel: string;
   assistantLabel: string;
   streamingLabel: string;
+  sourceSheetLabel: string;
+  sheetSwitchFromLabel: string;
+  sheetSwitchReasonLabel: string;
+  sheetSwitchReasonFollowupAnotherLabel: string;
+  sheetSwitchReasonFollowupExplicitLabel: string;
+  sheetSwitchReasonFollowupPreviousLabel: string;
   uploadError: string;
   uploadInvalidFileError: string;
   uploadTooLargeError: string;
@@ -160,6 +177,8 @@ export const messages: Record<Locale, UiMessages> = {
     uploadButton: "Choose spreadsheet",
     uploading: "Uploading...",
     workbookTitle: "Workbook & sheets",
+    workbookOverviewTitle: "Workbook overview",
+    workbookOverviewHint: "Review sheet size and key fields before asking questions.",
     workbookEmpty: "No file uploaded yet.",
     fileIdLabel: "File ID",
     fileTypeLabel: "Type",
@@ -168,7 +187,8 @@ export const messages: Record<Locale, UiMessages> = {
     previewEmpty: "Select a file and sheet to inspect the table preview.",
     chatTitle: "Conversation",
     chatHint: "The backend streams planner metadata and the final answer over SSE, so execution scope and answer generation stay inspectable.",
-    chatEmpty: "Ask about the active sheet only, or open Examples and Guide below for single-sheet prompts.",
+    chatEmpty:
+      "Start with a single-sheet question, then continue with sequential workbook analysis (A then B). Cross-sheet join is still not supported.",
     examplesButtonLabel: "Examples",
     guideButtonLabel: "Guide",
     quickStartTitle: "Start with one guided question",
@@ -199,6 +219,8 @@ export const messages: Record<Locale, UiMessages> = {
     totalRowsLabel: "Total rows",
     previewRowsLabel: "Preview rows",
     colsLoaded: "Columns loaded",
+    sheetFieldSummaryLabel: "Field summary",
+    sheetFieldSummaryEmpty: "No field summary available.",
     sheetOverridePendingLabel: "Next question will use this sheet",
     scopeLabel: "Execution scope",
     metadataLabel: "Metadata",
@@ -206,6 +228,9 @@ export const messages: Record<Locale, UiMessages> = {
     requestedSheetLabel: "Requested sheet",
     resolvedSheetLabel: "Resolved sheet",
     routingMethodLabel: "Matched by",
+    routingWhyLabel: "Why this sheet",
+    routingBoundaryLabel: "Boundary",
+    routingMentionedSheetsLabel: "Mentioned sheets",
     routingChangedLabel: "Routed to another sheet",
     routingMethodSingleSheetLabel: "Single-sheet workbook",
     routingMethodExplicitLabel: "Question explicitly mentioned the sheet",
@@ -214,6 +239,11 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "Previous turn context",
     routingMethodAutoLabel: "Workbook auto-routing",
     routingMethodRequestedLabel: "Requested sheet fallback",
+    routingBoundarySingleSheetLabel: "Single-sheet in scope",
+    routingBoundaryDetectedLabel: "Multi-sheet intent detected (sequential analysis only)",
+    routingBoundaryOutOfScopeLabel: "Cross-sheet join is out of scope",
+    routingBoundaryOutOfScopeHint:
+      "Current version supports workbook routing and sequential single-sheet analysis only. Cross-sheet join or union is not supported yet.",
     filterSummaryLabel: "Applied filters",
     topKSummaryLabel: "Top K",
     trendGrainLabel: "Trend grain",
@@ -268,6 +298,12 @@ export const messages: Record<Locale, UiMessages> = {
     userLabel: "User",
     assistantLabel: "Assistant",
     streamingLabel: "streaming",
+    sourceSheetLabel: "Source",
+    sheetSwitchFromLabel: "Switched from",
+    sheetSwitchReasonLabel: "Switch reason",
+    sheetSwitchReasonFollowupAnotherLabel: "Follow-up requested another sheet",
+    sheetSwitchReasonFollowupExplicitLabel: "Follow-up explicitly selected this sheet",
+    sheetSwitchReasonFollowupPreviousLabel: "Follow-up requested the previous sheet",
     uploadError: "Upload failed",
     uploadInvalidFileError: "Only .xlsx, .xls, and .csv files are supported.",
     uploadTooLargeError: "This file is too large to upload. Try a smaller workbook.",
@@ -285,31 +321,24 @@ export const messages: Record<Locale, UiMessages> = {
     missingQuestion: "Enter a question first.",
     suggestionGroups: [
       {
-        label: "Summary",
+        label: "Single-sheet analysis",
         prompts: [
           "How many rows are in the current sheet?",
-          "What is the total amount in this sheet?",
-        ],
-      },
-      {
-        label: "Ranking",
-        prompts: [
           "Show the top 5 categories by amount in the current sheet.",
-          "Which category ranks first by amount in this sheet?",
         ],
       },
       {
-        label: "Trend",
+        label: "Sequential multi-sheet (A then B)",
         prompts: [
-          "Generate a monthly trend chart for this sheet.",
-          "Show whether the total amount is increasing month by month in the current sheet.",
+          "Start with Sales sheet and show monthly amount trend.",
+          "Then continue on another sheet and summarize signup trend.",
         ],
       },
       {
-        label: "Forecast",
+        label: "Boundary examples (not supported yet)",
         prompts: [
-          "Forecast next month's total amount for the current sheet.",
-          "Estimate the next period's trend based on this sheet.",
+          "Join Sales and Users by email and calculate conversion.",
+          "Union two sheets and show one combined ranking chart.",
         ],
       },
     ],
@@ -328,6 +357,8 @@ export const messages: Record<Locale, UiMessages> = {
     uploadButton: "选择表格文件",
     uploading: "上传中...",
     workbookTitle: "工作簿与工作表",
+    workbookOverviewTitle: "工作簿概览",
+    workbookOverviewHint: "先看每个 sheet 的规模和关键字段，再选择要分析的工作表。",
     workbookEmpty: "尚未上传文件。",
     fileIdLabel: "文件 ID",
     fileTypeLabel: "类型",
@@ -336,7 +367,7 @@ export const messages: Record<Locale, UiMessages> = {
     previewEmpty: "请选择文件和工作表查看预览。",
     chatTitle: "对话分析",
     chatHint: "后端会通过 SSE 流式返回规划元数据与最终答案，便于查看执行口径与回答生成过程。",
-    chatEmpty: "请直接围绕当前工作表提问；如果不确定怎么问，可展开下方仅面向单 sheet 的示例和说明。",
+    chatEmpty: "建议先问单 sheet 问题，再按“先 A 后 B”顺序分析。当前仍不支持跨 sheet join。",
     examplesButtonLabel: "示例",
     guideButtonLabel: "说明",
     quickStartTitle: "先跑一个引导问题",
@@ -367,6 +398,8 @@ export const messages: Record<Locale, UiMessages> = {
     totalRowsLabel: "总行数",
     previewRowsLabel: "预览行数",
     colsLoaded: "已加载列数",
+    sheetFieldSummaryLabel: "字段摘要",
+    sheetFieldSummaryEmpty: "暂无字段摘要。",
     sheetOverridePendingLabel: "下一问将以当前 sheet 为准",
     scopeLabel: "执行口径",
     metadataLabel: "元数据",
@@ -374,6 +407,9 @@ export const messages: Record<Locale, UiMessages> = {
     requestedSheetLabel: "请求 sheet",
     resolvedSheetLabel: "实际命中",
     routingMethodLabel: "命中方式",
+    routingWhyLabel: "命中原因",
+    routingBoundaryLabel: "能力边界",
+    routingMentionedSheetsLabel: "提及工作表",
     routingChangedLabel: "已自动切换到其他 sheet",
     routingMethodSingleSheetLabel: "单 sheet 工作簿",
     routingMethodExplicitLabel: "问题中显式指定了 sheet",
@@ -382,6 +418,10 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "沿用上一轮上下文",
     routingMethodAutoLabel: "工作簿自动路由",
     routingMethodRequestedLabel: "按请求 sheet 兜底",
+    routingBoundarySingleSheetLabel: "单 sheet 范围内",
+    routingBoundaryDetectedLabel: "已识别为多 sheet 问题（仅支持顺序分析）",
+    routingBoundaryOutOfScopeLabel: "涉及跨 sheet 联合分析（当前不支持）",
+    routingBoundaryOutOfScopeHint: "当前版本仅支持 workbook 路由与顺序式单 sheet 分析，暂不支持跨 sheet join 或 union。",
     filterSummaryLabel: "筛选条件",
     topKSummaryLabel: "Top K 口径",
     trendGrainLabel: "趋势粒度",
@@ -436,6 +476,12 @@ export const messages: Record<Locale, UiMessages> = {
     userLabel: "用户",
     assistantLabel: "助手",
     streamingLabel: "流式返回中",
+    sourceSheetLabel: "结果来源",
+    sheetSwitchFromLabel: "已从以下 sheet 切换",
+    sheetSwitchReasonLabel: "切换原因",
+    sheetSwitchReasonFollowupAnotherLabel: "根据追问“另一个 sheet”自动切换",
+    sheetSwitchReasonFollowupExplicitLabel: "根据追问中明确指定的 sheet 切换",
+    sheetSwitchReasonFollowupPreviousLabel: "根据追问“上一个 sheet”自动切换",
     uploadError: "上传失败",
     uploadInvalidFileError: "仅支持上传 .xlsx、.xls 和 .csv 文件。",
     uploadTooLargeError: "当前文件过大，暂时无法上传，请换一个更小的工作簿。",
@@ -453,31 +499,24 @@ export const messages: Record<Locale, UiMessages> = {
     missingQuestion: "请先输入问题。",
     suggestionGroups: [
       {
-        label: "汇总",
+        label: "单 Sheet 分析",
         prompts: [
           "当前工作表有多少行？",
-          "统计当前工作表的总金额。",
-        ],
-      },
-      {
-        label: "排名",
-        prompts: [
           "按类别列出当前工作表金额前 5 名。",
-          "当前工作表里金额最高的类别是什么？",
         ],
       },
       {
-        label: "趋势",
+        label: "顺序多 Sheet（先 A 后 B）",
         prompts: [
-          "生成当前工作表的按月趋势图。",
-          "看一下当前工作表总金额是否按月上升。",
+          "先分析 Sales 工作表的月度金额趋势。",
+          "然后继续看另一个 sheet，并总结注册趋势。",
         ],
       },
       {
-        label: "预测",
+        label: "边界问题（当前不支持）",
         prompts: [
-          "预测当前工作表下个月总费用。",
-          "基于当前工作表估计下一期的总金额趋势。",
+          "把 Sales 和 Users 按邮箱 join 后计算转化率。",
+          "把两个 sheet union 后输出一个合并排行图。",
         ],
       },
     ],
@@ -496,6 +535,8 @@ export const messages: Record<Locale, UiMessages> = {
     uploadButton: "スプレッドシートを選択",
     uploading: "アップロード中...",
     workbookTitle: "ワークブックとシート",
+    workbookOverviewTitle: "ワークブック概要",
+    workbookOverviewHint: "質問前に各シートの規模と主要フィールドを確認できます。",
     workbookEmpty: "まだファイルがアップロードされていません。",
     fileIdLabel: "ファイル ID",
     fileTypeLabel: "種類",
@@ -504,7 +545,8 @@ export const messages: Record<Locale, UiMessages> = {
     previewEmpty: "ファイルとシートを選択するとプレビューが表示されます。",
     chatTitle: "対話分析",
     chatHint: "バックエンドは SSE でプランナー情報と最終回答を逐次返し、実行範囲と回答生成の流れを確認できます。",
-    chatEmpty: "現在のシートについて質問してください。迷う場合は、下の単一シート向けサンプルと説明を開いてください。",
+    chatEmpty:
+      "まずは単一シートの質問から始め、次にワークブック内で A→B の順次分析へ進んでください。シート横断 join はまだ未対応です。",
     examplesButtonLabel: "サンプル",
     guideButtonLabel: "説明",
     quickStartTitle: "まずはガイド付きの質問から",
@@ -535,6 +577,8 @@ export const messages: Record<Locale, UiMessages> = {
     totalRowsLabel: "総行数",
     previewRowsLabel: "プレビュー行数",
     colsLoaded: "読込列数",
+    sheetFieldSummaryLabel: "フィールド要約",
+    sheetFieldSummaryEmpty: "フィールド要約はありません。",
     sheetOverridePendingLabel: "次の質問ではこのシートを使います",
     scopeLabel: "実行範囲",
     metadataLabel: "メタデータ",
@@ -542,6 +586,9 @@ export const messages: Record<Locale, UiMessages> = {
     requestedSheetLabel: "要求シート",
     resolvedSheetLabel: "実行シート",
     routingMethodLabel: "判定方法",
+    routingWhyLabel: "選定理由",
+    routingBoundaryLabel: "対応範囲",
+    routingMentionedSheetsLabel: "言及シート",
     routingChangedLabel: "別シートにルーティングされました",
     routingMethodSingleSheetLabel: "単一シートのブック",
     routingMethodExplicitLabel: "質問でシートが明示された",
@@ -550,6 +597,11 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodFollowupLabel: "前ターンの文脈",
     routingMethodAutoLabel: "ワークブック自動ルーティング",
     routingMethodRequestedLabel: "要求シートへのフォールバック",
+    routingBoundarySingleSheetLabel: "単一シート範囲内",
+    routingBoundaryDetectedLabel: "複数シート意図を検出（順次分析のみ対応）",
+    routingBoundaryOutOfScopeLabel: "シート横断 join は対象外",
+    routingBoundaryOutOfScopeHint:
+      "現バージョンはワークブック内ルーティングと順次単一シート分析まで対応します。シート横断 join/union にはまだ対応していません。",
     filterSummaryLabel: "適用フィルター",
     topKSummaryLabel: "Top K 条件",
     trendGrainLabel: "トレンド粒度",
@@ -604,6 +656,12 @@ export const messages: Record<Locale, UiMessages> = {
     userLabel: "ユーザー",
     assistantLabel: "アシスタント",
     streamingLabel: "ストリーミング中",
+    sourceSheetLabel: "結果元",
+    sheetSwitchFromLabel: "切替元シート",
+    sheetSwitchReasonLabel: "切替理由",
+    sheetSwitchReasonFollowupAnotherLabel: "フォローアップで別シート指定があったため",
+    sheetSwitchReasonFollowupExplicitLabel: "フォローアップで明示シート指定があったため",
+    sheetSwitchReasonFollowupPreviousLabel: "フォローアップで前のシート指定があったため",
     uploadError: "アップロード失敗",
     uploadInvalidFileError: ".xlsx、.xls、.csv ファイルのみアップロードできます。",
     uploadTooLargeError: "このファイルは大きすぎてアップロードできません。より小さいワークブックを試してください。",
@@ -621,31 +679,24 @@ export const messages: Record<Locale, UiMessages> = {
     missingQuestion: "先に質問を入力してください。",
     suggestionGroups: [
       {
-        label: "集計",
+        label: "単一シート分析",
         prompts: [
           "現在のシートの行数は？",
-          "このシートの合計金額を出して。",
-        ],
-      },
-      {
-        label: "ランキング",
-        prompts: [
           "現在のシートでカテゴリ別 Top 5 を表示。",
-          "このシートで金額が最も大きいカテゴリは？",
         ],
       },
       {
-        label: "トレンド",
+        label: "順次マルチシート（A→B）",
         prompts: [
-          "このシートの月次トレンドチャートを作成。",
-          "現在のシートで合計金額が月ごとに増えているか見せて。",
+          "まず Sales シートの月次金額トレンドを分析。",
+          "次に別シートへ続けて、登録トレンドを要約。",
         ],
       },
       {
-        label: "予測",
+        label: "境界例（未対応）",
         prompts: [
-          "現在のシートの来月の合計費用を予測して。",
-          "このシートをもとに次の期間の合計推移を見積もって。",
+          "Sales と Users をメールで join して転換率を計算。",
+          "2 つのシートを union して 1 つのランキングチャートを作成。",
         ],
       },
     ],
