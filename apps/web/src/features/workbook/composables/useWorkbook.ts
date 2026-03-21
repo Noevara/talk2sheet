@@ -19,6 +19,8 @@ export interface WorkbookSnapshot {
   selectedSheetIndex: number;
   pendingSheetOverride: boolean;
   preview: PreviewResponse | null;
+  batchSelectedSheetIndexes: number[];
+  recentBatchSheetIndexes?: number[];
 }
 
 export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConversation: () => void }) {
@@ -26,6 +28,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
   const selectedSheetIndex = ref(1);
   const pendingSheetOverride = ref(false);
   const preview = ref<PreviewResponse | null>(null);
+  const batchSelectedSheetIndexes = ref<number[]>([]);
+  const recentBatchSheetIndexes = ref<number[]>([]);
   const uploadBusy = ref(false);
   const previewBusy = ref(false);
   const workbookOverviewBusy = ref(false);
@@ -42,7 +46,39 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     return Boolean(workbook.value && preview.value && activeSheetLabel.value !== workbook.value.file_name);
   });
 
-  async function refreshWorkbookSummary(fileId: string): Promise<void> {
+  function availableBatchSheetIndexes(): number[] {
+    return (workbook.value?.sheets || [])
+      .map((sheet) => Number(sheet.index || 0))
+      .filter((sheetIndex) => Number.isFinite(sheetIndex) && sheetIndex > 0);
+  }
+
+  function normalizeSheetIndexList(sheetIndexes: number[], availableSheetIndexes: number[]): number[] {
+    return Array.from(
+      new Set(
+        sheetIndexes
+          .map((item) => Number(item || 0))
+          .filter((item) => item > 0 && availableSheetIndexes.includes(item)),
+      ),
+    );
+  }
+
+  function normalizeBatchSelection(options?: { defaultToAll?: boolean }): void {
+    const availableSheetIndexes = availableBatchSheetIndexes();
+    if (!availableSheetIndexes.length) {
+      batchSelectedSheetIndexes.value = [];
+      recentBatchSheetIndexes.value = [];
+      return;
+    }
+    const selected = normalizeSheetIndexList(batchSelectedSheetIndexes.value, availableSheetIndexes);
+    batchSelectedSheetIndexes.value =
+      options?.defaultToAll && !selected.length ? [...availableSheetIndexes] : selected;
+    recentBatchSheetIndexes.value = normalizeSheetIndexList(recentBatchSheetIndexes.value, availableSheetIndexes);
+  }
+
+  async function refreshWorkbookSummary(
+    fileId: string,
+    refreshOptions?: { defaultBatchSelection?: boolean },
+  ): Promise<void> {
     workbookOverviewBusy.value = true;
     workbookOverviewError.value = "";
     try {
@@ -51,6 +87,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
         return;
       }
       workbook.value = summary;
+      normalizeBatchSelection({ defaultToAll: refreshOptions?.defaultBatchSelection ?? false });
     } catch (error) {
       workbookOverviewError.value = formatPreviewError(error, options.ui.value);
     } finally {
@@ -94,6 +131,41 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     pendingSheetOverride.value = false;
   }
 
+  function setBatchSheetSelection(sheetIndexes: number[]): void {
+    batchSelectedSheetIndexes.value = sheetIndexes;
+    normalizeBatchSelection();
+  }
+
+  function invertBatchSheetSelection(): void {
+    const available = availableBatchSheetIndexes();
+    if (!available.length) {
+      return;
+    }
+    const selectedSet = new Set(batchSelectedSheetIndexes.value);
+    const inverted = available.filter((sheetIndex) => !selectedSet.has(sheetIndex));
+    setBatchSheetSelection(inverted);
+  }
+
+  function applyRecentBatchSelection(): void {
+    if (!recentBatchSheetIndexes.value.length) {
+      return;
+    }
+    setBatchSheetSelection([...recentBatchSheetIndexes.value]);
+  }
+
+  function rememberRecentBatchSelection(sheetIndexes: number[]): void {
+    const available = availableBatchSheetIndexes();
+    if (!available.length) {
+      recentBatchSheetIndexes.value = [];
+      return;
+    }
+    const normalized = normalizeSheetIndexList(sheetIndexes, available);
+    if (!normalized.length) {
+      return;
+    }
+    recentBatchSheetIndexes.value = normalized;
+  }
+
   async function handleFileSelection(event: Event): Promise<void> {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
@@ -114,7 +186,7 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
       pendingSheetOverride.value = false;
       workbookOverviewError.value = "";
       options.resetConversation();
-      await refreshWorkbookSummary(uploaded.file_id);
+      await refreshWorkbookSummary(uploaded.file_id, { defaultBatchSelection: true });
       const firstSheet = workbook.value?.sheets[0]?.index || uploaded.sheets[0]?.index || 1;
       await loadPreview(firstSheet, { resetConversation: false });
     } catch (error) {
@@ -134,6 +206,13 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     selectedSheetIndex.value = snapshot.selectedSheetIndex || 1;
     pendingSheetOverride.value = snapshot.pendingSheetOverride;
     preview.value = snapshot.preview;
+    batchSelectedSheetIndexes.value = Array.isArray(snapshot.batchSelectedSheetIndexes)
+      ? snapshot.batchSelectedSheetIndexes.map((item) => Number(item || 0)).filter((item) => item > 0)
+      : [];
+    recentBatchSheetIndexes.value = Array.isArray(snapshot.recentBatchSheetIndexes)
+      ? snapshot.recentBatchSheetIndexes.map((item) => Number(item || 0)).filter((item) => item > 0)
+      : [];
+    normalizeBatchSelection();
     workbookOverviewError.value = "";
     errorMessage.value = "";
   }
@@ -144,6 +223,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
       selectedSheetIndex: selectedSheetIndex.value,
       pendingSheetOverride: pendingSheetOverride.value,
       preview: preview.value,
+      batchSelectedSheetIndexes: [...batchSelectedSheetIndexes.value],
+      recentBatchSheetIndexes: [...recentBatchSheetIndexes.value],
     };
   }
 
@@ -152,6 +233,8 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     selectedSheetIndex.value = 1;
     pendingSheetOverride.value = false;
     preview.value = null;
+    batchSelectedSheetIndexes.value = [];
+    recentBatchSheetIndexes.value = [];
     workbookOverviewBusy.value = false;
     workbookOverviewError.value = "";
     errorMessage.value = "";
@@ -203,6 +286,12 @@ export function useWorkbook(options: { ui: ComputedRef<UiMessages>; resetConvers
     handleManualSheetSelect,
     clearPendingSheetOverride,
     handleFileSelection,
+    batchSelectedSheetIndexes,
+    recentBatchSheetIndexes,
+    setBatchSheetSelection,
+    invertBatchSheetSelection,
+    applyRecentBatchSelection,
+    rememberRecentBatchSelection,
   };
 }
 

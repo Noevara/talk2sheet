@@ -72,6 +72,7 @@ describe("useWorkbook", () => {
       },
       selectedSheetIndex: 1,
       pendingSheetOverride: false,
+      batchSelectedSheetIndexes: [1],
       preview: {
         file_id: "file-1",
         sheet_index: 1,
@@ -133,5 +134,43 @@ describe("useWorkbook", () => {
     expect(state.workbook.value?.sheets[0].rows).toBe(120);
     expect(state.workbook.value?.sheets[0].field_summary).toEqual(["Date (date)", "Amount (numeric)"]);
     expect(state.workbookOverviewError.value).toBe("");
+  });
+
+  it("supports invert and recent batch sheet selection shortcuts", () => {
+    const state = useWorkbook({
+      ui: computed(() => messages.en),
+      resetConversation: vi.fn(),
+    });
+
+    state.restoreState({
+      workbook: {
+        file_id: "file-1",
+        file_name: "demo.xlsx",
+        file_type: "xlsx",
+        sheets: [
+          { index: 1, name: "Sales" },
+          { index: 2, name: "Users" },
+          { index: 3, name: "Marketing" },
+        ],
+      },
+      selectedSheetIndex: 1,
+      pendingSheetOverride: false,
+      preview: null,
+      batchSelectedSheetIndexes: [1, 3],
+      recentBatchSheetIndexes: [2],
+    });
+
+    state.invertBatchSheetSelection();
+    expect(state.batchSelectedSheetIndexes.value).toEqual([2]);
+
+    state.setBatchSheetSelection([1, 2]);
+    state.rememberRecentBatchSelection([1, 2]);
+    state.setBatchSheetSelection([3]);
+    state.applyRecentBatchSelection();
+    expect(state.batchSelectedSheetIndexes.value).toEqual([1, 2]);
+
+    state.setBatchSheetSelection([]);
+    expect(state.batchSelectedSheetIndexes.value).toEqual([]);
+    expect(state.recentBatchSheetIndexes.value).toEqual([1, 2]);
   });
 });

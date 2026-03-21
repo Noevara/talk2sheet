@@ -20,6 +20,8 @@ describe("sessionPersistence", () => {
         },
         selectedSheetIndex: 1,
         pendingSheetOverride: false,
+        batchSelectedSheetIndexes: [1],
+        recentBatchSheetIndexes: [1, 2],
         preview: {
           file_id: "file-1",
           sheet_index: 1,
@@ -47,5 +49,6 @@ describe("sessionPersistence", () => {
 
     expect(restored?.conversation.chatMessages[0]?.status).toBe("done");
     expect(restored?.workbook.workbook?.file_id).toBe("file-1");
+    expect(restored?.workbook.recentBatchSheetIndexes).toEqual([1, 2]);
   });
 });

@@ -154,6 +154,24 @@ export interface UiMessages {
   taskStepCurrentLabel: string;
   taskStepCompletedLabel: string;
   taskStepFailedLabel: string;
+  batchPanelTitle: string;
+  batchPanelHint: string;
+  batchSelectAllLabel: string;
+  batchInvertLabel: string;
+  batchUseRecentLabel: string;
+  batchRecentSelectionHintLabel: string;
+  batchClearLabel: string;
+  batchRunLabel: string;
+  batchRunBusyLabel: string;
+  batchMissingSheetsError: string;
+  batchSummaryLabel: string;
+  batchSummarySheetLabel: string;
+  batchSummaryStatusLabel: string;
+  batchSummaryRowsLabel: string;
+  batchSummaryAnswerLabel: string;
+  batchSummaryTotalsLabel: string;
+  batchStatusSuccessLabel: string;
+  batchStatusFailedLabel: string;
   stepComparisonLabel: string;
   stepComparisonPreviousLabel: string;
   stepComparisonCurrentLabel: string;
@@ -328,6 +346,24 @@ export const messages: Record<Locale, UiMessages> = {
     taskStepCurrentLabel: "In progress",
     taskStepCompletedLabel: "Completed",
     taskStepFailedLabel: "Failed",
+    batchPanelTitle: "Workbook batch analysis",
+    batchPanelHint: "Use the current question and run the same analysis template across selected sheets.",
+    batchSelectAllLabel: "Select all",
+    batchInvertLabel: "Invert",
+    batchUseRecentLabel: "Use recent",
+    batchRecentSelectionHintLabel: "Recent",
+    batchClearLabel: "Clear",
+    batchRunLabel: "Run batch",
+    batchRunBusyLabel: "Batch running...",
+    batchMissingSheetsError: "Select at least one sheet for batch analysis.",
+    batchSummaryLabel: "Batch summary",
+    batchSummarySheetLabel: "Sheet",
+    batchSummaryStatusLabel: "Status",
+    batchSummaryRowsLabel: "Rows",
+    batchSummaryAnswerLabel: "Key output",
+    batchSummaryTotalsLabel: "Batch completed",
+    batchStatusSuccessLabel: "Success",
+    batchStatusFailedLabel: "Failed",
     stepComparisonLabel: "Step comparison",
     stepComparisonPreviousLabel: "Previous step",
     stepComparisonCurrentLabel: "Current step",
@@ -520,6 +556,24 @@ export const messages: Record<Locale, UiMessages> = {
     taskStepCurrentLabel: "进行中",
     taskStepCompletedLabel: "已完成",
     taskStepFailedLabel: "失败",
+    batchPanelTitle: "工作簿批量分析",
+    batchPanelHint: "使用当前输入框问题，在所选 sheet 上执行同一分析模板。",
+    batchSelectAllLabel: "全选",
+    batchInvertLabel: "反选",
+    batchUseRecentLabel: "使用最近",
+    batchRecentSelectionHintLabel: "最近选择",
+    batchClearLabel: "清空",
+    batchRunLabel: "批量执行",
+    batchRunBusyLabel: "批量执行中...",
+    batchMissingSheetsError: "请至少选择一个 sheet 再执行批量分析。",
+    batchSummaryLabel: "批量汇总",
+    batchSummarySheetLabel: "Sheet",
+    batchSummaryStatusLabel: "状态",
+    batchSummaryRowsLabel: "结果行数",
+    batchSummaryAnswerLabel: "关键输出",
+    batchSummaryTotalsLabel: "批量完成",
+    batchStatusSuccessLabel: "成功",
+    batchStatusFailedLabel: "失败",
     stepComparisonLabel: "步骤对照",
     stepComparisonPreviousLabel: "上一步",
     stepComparisonCurrentLabel: "当前步骤",
@@ -714,6 +768,24 @@ export const messages: Record<Locale, UiMessages> = {
     taskStepCurrentLabel: "実行中",
     taskStepCompletedLabel: "完了",
     taskStepFailedLabel: "失敗",
+    batchPanelTitle: "ワークブック一括分析",
+    batchPanelHint: "現在の質問を使って、選択したシートに同じ分析テンプレートを適用します。",
+    batchSelectAllLabel: "全選択",
+    batchInvertLabel: "反転",
+    batchUseRecentLabel: "最近を使用",
+    batchRecentSelectionHintLabel: "最近の選択",
+    batchClearLabel: "クリア",
+    batchRunLabel: "一括実行",
+    batchRunBusyLabel: "一括実行中...",
+    batchMissingSheetsError: "一括分析するシートを 1 つ以上選択してください。",
+    batchSummaryLabel: "一括サマリー",
+    batchSummarySheetLabel: "シート",
+    batchSummaryStatusLabel: "状態",
+    batchSummaryRowsLabel: "行数",
+    batchSummaryAnswerLabel: "主要出力",
+    batchSummaryTotalsLabel: "一括完了",
+    batchStatusSuccessLabel: "成功",
+    batchStatusFailedLabel: "失敗",
     stepComparisonLabel: "ステップ比較",
     stepComparisonPreviousLabel: "前のステップ",
     stepComparisonCurrentLabel: "現在のステップ",
