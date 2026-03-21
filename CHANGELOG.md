@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (toward v0.3.0)
+## v0.3.0 (2026-03-21)
 
 Workbook-level routing and multi-sheet usability update, focused on safe decomposition and clearer user-visible reasoning.
 
