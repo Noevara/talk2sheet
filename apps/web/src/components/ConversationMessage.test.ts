@@ -137,11 +137,14 @@ describe("ConversationMessage", () => {
       text: "Users sheet selected.",
       clarification: null,
       pipeline: {
+        source_sheet_index: 2,
+        source_sheet_name: "Users",
         sheet_routing: {
           requested_sheet_index: 1,
           resolved_sheet_index: 2,
           resolved_sheet_name: "Users",
           matched_by: "auto_routing",
+          explanation: "Auto-routed to this sheet based on question and column-match signals.",
           workbook_sheet_count: 2,
         },
       },
@@ -158,8 +161,109 @@ describe("ConversationMessage", () => {
     expect(wrapper.text()).toContain("Requested sheet");
     expect(wrapper.text()).toContain("#1");
     expect(wrapper.text()).toContain("Users (#2)");
+    expect(wrapper.text()).toContain("Source: Users (#2)");
     expect(wrapper.text()).toContain("Workbook auto-routing");
+    expect(wrapper.text()).toContain("Why this sheet");
+    expect(wrapper.text()).toContain("Auto-routed to this sheet based on question and column-match signals.");
+    expect(wrapper.text()).toContain("Single-sheet in scope");
     expect(wrapper.text()).toContain("Routed to another sheet");
+  });
+
+  it("renders switched-from sheet hint for sequential multi-sheet flow", () => {
+    const message: ChatMessage = {
+      id: "assistant-sheet-switch",
+      role: "assistant",
+      text: "Switched to another sheet.",
+      clarification: null,
+      pipeline: {
+        source_sheet_index: 2,
+        source_sheet_name: "Users",
+        sheet_sequence: {
+          previous_sheet_index: 1,
+          previous_sheet_name: "Sales",
+          switched_from_previous: true,
+          last_sheet_switch_reason: "followup_switch_to_another_sheet",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Source: Users (#2)");
+    expect(wrapper.text()).toContain("Switched from Sales (#1)");
+    expect(wrapper.text()).toContain("Switch reason: Follow-up requested another sheet");
+  });
+
+  it("renders previous-sheet switch reason when routed back", () => {
+    const message: ChatMessage = {
+      id: "assistant-sheet-switch-previous",
+      role: "assistant",
+      text: "Switched back to previous sheet.",
+      clarification: null,
+      pipeline: {
+        source_sheet_index: 1,
+        source_sheet_name: "Sales",
+        sheet_sequence: {
+          previous_sheet_index: 2,
+          previous_sheet_name: "Users",
+          switched_from_previous: true,
+          last_sheet_switch_reason: "followup_switch_to_previous_sheet",
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Switch reason: Follow-up requested the previous sheet");
+  });
+
+  it("renders multi-sheet boundary and mentioned sheets when out of scope", () => {
+    const message: ChatMessage = {
+      id: "assistant-routing-boundary",
+      role: "assistant",
+      text: "Cross-sheet join is not supported.",
+      clarification: null,
+      pipeline: {
+        sheet_routing: {
+          requested_sheet_index: 1,
+          resolved_sheet_index: 1,
+          resolved_sheet_name: "Sales",
+          matched_by: "explicit_reference",
+          workbook_sheet_count: 3,
+          boundary_status: "multi_sheet_out_of_scope",
+          boundary_reason: "cross_sheet_join_not_supported",
+          decomposition_hint: "Suggested decomposition: analyze 'Sales' first, then 'Users'.",
+          mentioned_sheets: [
+            { sheet_index: 1, sheet_name: "Sales" },
+            { sheet_index: 2, sheet_name: "Users" },
+          ],
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Boundary");
+    expect(wrapper.text()).toContain("Cross-sheet join is out of scope");
+    expect(wrapper.text()).toContain("Mentioned sheets");
+    expect(wrapper.text()).toContain("Sales (#1), Users (#2)");
+    expect(wrapper.text()).toContain("Cross-sheet join or union is not supported yet.");
+    expect(wrapper.text()).toContain("analyze 'Sales' first, then 'Users'");
   });
 
   it("exports detail rows as csv for assistant result tables", async () => {

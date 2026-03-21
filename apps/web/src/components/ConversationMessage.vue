@@ -68,6 +68,23 @@ function formatSheetDescriptor(sheetName: string, sheetIndex: number | null): st
   return "—";
 }
 
+function formatSheetSwitchReason(reason: string): string {
+  const normalized = reason.trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "followup_switch_to_another_sheet") {
+    return props.ui.sheetSwitchReasonFollowupAnotherLabel;
+  }
+  if (normalized === "followup_switch_to_explicit_sheet") {
+    return props.ui.sheetSwitchReasonFollowupExplicitLabel;
+  }
+  if (normalized === "followup_switch_to_previous_sheet") {
+    return props.ui.sheetSwitchReasonFollowupPreviousLabel;
+  }
+  return "";
+}
+
 const detailRows = computed(() => {
   const rows = props.message.pipeline?.preview_rows;
   return Array.isArray(rows) ? (rows as unknown[][]) : [];
@@ -484,6 +501,17 @@ const sheetRoutingMeta = computed(() => {
   const workbookSheetCount = readNumber(routing.workbook_sheet_count) || 0;
   const matchedBy = readString(routing.matched_by);
   const reason = readString(routing.reason);
+  const boundaryStatus = readString(routing.boundary_status);
+  const boundaryReason = readString(routing.boundary_reason);
+  const decompositionHint = readString(routing.decomposition_hint);
+  const routingExplanation = readString(routing.explanation);
+  const mentionedSheets = Array.isArray(routing.mentioned_sheets)
+    ? (routing.mentioned_sheets as unknown[])
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+        .map((item) => formatSheetDescriptor(readString(item.sheet_name), readNumber(item.sheet_index)))
+        .filter((item) => item && item !== "—")
+    : [];
 
   if (!resolvedSheetIndex && reason !== "ambiguous_sheet_match") {
     return null;
@@ -512,11 +540,60 @@ const sheetRoutingMeta = computed(() => {
     return null;
   }
 
+  let boundaryLabel = props.ui.routingBoundarySingleSheetLabel;
+  if (boundaryStatus === "multi_sheet_detected") {
+    boundaryLabel = props.ui.routingBoundaryDetectedLabel;
+  } else if (boundaryStatus === "multi_sheet_out_of_scope") {
+    boundaryLabel = props.ui.routingBoundaryOutOfScopeLabel;
+  }
+
+  const boundaryOutOfScope = boundaryStatus === "multi_sheet_out_of_scope" || boundaryReason === "cross_sheet_join_not_supported";
+
   return {
     requestedLabel: formatSheetDescriptor(requestedSheetName, requestedSheetIndex),
     resolvedLabel: formatSheetDescriptor(resolvedSheetName, resolvedSheetIndex),
     methodLabel,
+    explanationLabel: routingExplanation,
     changed,
+    boundaryLabel,
+    boundaryNote: boundaryOutOfScope ? props.ui.routingBoundaryOutOfScopeHint : "",
+    decompositionHint,
+    mentionedSheetsLabel: mentionedSheets.join(", "),
+  };
+});
+
+const sourceSheetMeta = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const routing = asRecord(pipeline.sheet_routing);
+  const sequence = asRecord(pipeline.sheet_sequence);
+
+  const sourceSheetIndex = readNumber(pipeline.source_sheet_index) ?? readNumber(routing?.resolved_sheet_index);
+  const sourceSheetName = readString(pipeline.source_sheet_name) || readString(routing?.resolved_sheet_name);
+  if (!sourceSheetIndex && !sourceSheetName) {
+    return null;
+  }
+
+  const previousSheetIndex = readNumber(sequence?.previous_sheet_index);
+  const previousSheetName = readString(sequence?.previous_sheet_name);
+  const switchedFromPrevious =
+    sequence?.switched_from_previous === true || readString(routing?.reason).startsWith("followup_switch_to_");
+  const switchReason = readString(sequence?.last_sheet_switch_reason) || readString(routing?.reason);
+  const switchedFromLabel =
+    switchedFromPrevious && (previousSheetIndex || previousSheetName)
+      ? formatSheetDescriptor(previousSheetName, previousSheetIndex)
+      : "";
+  const switchReasonLabel = switchedFromPrevious ? formatSheetSwitchReason(switchReason) : "";
+
+  return {
+    sourceLabel: formatSheetDescriptor(sourceSheetName, sourceSheetIndex),
+    switchedFromLabel,
+    switchReasonLabel,
   };
 });
 
@@ -622,6 +699,16 @@ async function handleExportChart(): Promise<void> {
         {{ message.role === "user" ? ui.userLabel : ui.assistantLabel }}
       </span>
       <span v-if="message.status === 'streaming'" class="message-streaming">{{ ui.streamingLabel }}</span>
+    </div>
+
+    <div v-if="sourceSheetMeta" class="message-source-sheet">
+      <span class="source-pill">{{ ui.sourceSheetLabel }}: {{ sourceSheetMeta.sourceLabel }}</span>
+      <span v-if="sourceSheetMeta.switchedFromLabel" class="source-pill source-pill-emphasis">
+        {{ ui.sheetSwitchFromLabel }} {{ sourceSheetMeta.switchedFromLabel }}
+      </span>
+      <span v-if="sourceSheetMeta.switchReasonLabel" class="source-pill source-pill-subtle">
+        {{ ui.sheetSwitchReasonLabel }}: {{ sourceSheetMeta.switchReasonLabel }}
+      </span>
     </div>
 
     <template v-if="message.role === 'assistant' && hasStructuredAnswer">
@@ -764,8 +851,22 @@ async function handleExportChart(): Promise<void> {
           <span>{{ ui.routingMethodLabel }}</span>
           <strong>{{ sheetRoutingMeta.methodLabel }}</strong>
         </div>
+        <div v-if="sheetRoutingMeta.explanationLabel" class="routing-item">
+          <span>{{ ui.routingWhyLabel }}</span>
+          <strong>{{ sheetRoutingMeta.explanationLabel }}</strong>
+        </div>
+        <div class="routing-item">
+          <span>{{ ui.routingBoundaryLabel }}</span>
+          <strong>{{ sheetRoutingMeta.boundaryLabel }}</strong>
+        </div>
+        <div v-if="sheetRoutingMeta.mentionedSheetsLabel" class="routing-item">
+          <span>{{ ui.routingMentionedSheetsLabel }}</span>
+          <strong>{{ sheetRoutingMeta.mentionedSheetsLabel }}</strong>
+        </div>
       </div>
       <div v-if="sheetRoutingMeta.changed" class="routing-note">{{ ui.routingChangedLabel }}</div>
+      <div v-if="sheetRoutingMeta.boundaryNote" class="routing-note">{{ sheetRoutingMeta.boundaryNote }}</div>
+      <div v-if="sheetRoutingMeta.decompositionHint" class="routing-note">{{ sheetRoutingMeta.decompositionHint }}</div>
     </div>
 
     <div v-if="message.role === 'assistant' && analysisSummaryMeta" class="message-analysis-summary">
@@ -896,6 +997,34 @@ async function handleExportChart(): Promise<void> {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.7rem;
+}
+
+.message-source-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  margin-bottom: 0.62rem;
+}
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  background: rgba(29, 95, 133, 0.1);
+  color: rgba(23, 50, 84, 0.8);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.source-pill-emphasis {
+  background: rgba(200, 92, 60, 0.14);
+  color: #8e3e28;
+}
+
+.source-pill-subtle {
+  background: rgba(23, 50, 84, 0.08);
+  color: rgba(23, 50, 84, 0.72);
 }
 
 .message-role,
