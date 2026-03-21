@@ -116,6 +116,9 @@ async def test_stream_chat_persists_conversation_and_passes_followup_context(tmp
     assert first_events[1]["pipeline"]["observability"]["request_id"] == first_request_id
     assert first_events[1]["pipeline"]["observability"]["stage_timings_ms"]["planner_ms"] >= 0
     assert first_events[1]["pipeline"]["observability"]["total_ms"] >= 0
+    assert first_events[1]["pipeline"]["observability"]["multi_sheet_detected"] == 0
+    assert first_events[1]["pipeline"]["observability"]["clarification_sheet_count"] == 0
+    assert first_events[1]["pipeline"]["observability"]["sheet_switch_count"] == 0
 
     second_events = await _collect_events(
         path=csv_path,
@@ -226,9 +229,50 @@ async def test_stream_chat_auto_routes_to_matching_sheet_in_workbook(tmp_path, m
     assert events[0]["meta"]["resolved_sheet_index"] == 2
     assert events[0]["meta"]["resolved_sheet_name"] == "Users"
     assert events[0]["meta"]["sheet_routing"]["matched_by"] == "auto_routing"
+    assert "Auto-routed" in events[0]["meta"]["sheet_routing"]["explanation"]
     assert events[1]["pipeline"]["source_sheet_index"] == 2
     assert events[1]["pipeline"]["source_sheet_name"] == "Users"
     assert events[1]["pipeline"]["sheet_routing"]["reason"] == "auto_routed_by_sheet_profile"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_returns_multi_sheet_clarification_for_cross_sheet_question(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_multisheet.xlsx"
+    _write_workbook(workbook_path)
+
+    events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-multi",
+        chat_text="Join Sales and Users by email and show conversion.",
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+
+    assert events[0]["meta"]["sheet_routing"]["status"] == "clarification"
+    assert events[0]["meta"]["sheet_routing"]["reason"] == "multi_sheet_needs_decomposition"
+    assert events[0]["meta"]["sheet_routing"]["boundary_status"] == "multi_sheet_out_of_scope"
+    assert "choose one sheet first" in str(events[0]["meta"]["sheet_routing"]["explanation"]).lower()
+    assert "decomposition_hint" in events[0]["meta"]["sheet_routing"]
+    assert "Suggested decomposition" in events[0]["meta"]["sheet_routing"]["decomposition_hint"]
+    assert events[0]["meta"]["observability"]["sheet_routing"]["multi_sheet_detected"] == 1
+    assert events[1]["pipeline"]["clarification_stage"] == "sheet_routing"
+    assert events[1]["pipeline"]["sheet_routing"]["matched_by"] == "multi_sheet_boundary"
+    assert len(events[1]["pipeline"]["clarification"]["options"]) == 2
+    assert events[1]["pipeline"]["observability"]["multi_sheet_detected"] == 1
+    assert events[1]["pipeline"]["observability"]["clarification_sheet_count"] == 2
+    assert events[1]["pipeline"]["observability"]["sheet_switch_count"] == 0
+    assert events[1]["pipeline"]["observability"]["multi_sheet_failure_reason"] == "cross_sheet_join_not_supported"
+    assert events[1]["pipeline"]["observability"]["multi_sheet_top_failure_reasons"]["cross_sheet_join_not_supported"] >= 1
+    assert "multiple sheets" in str(events[2]["answer"]).lower()
 
 
 @pytest.mark.asyncio
@@ -270,9 +314,112 @@ async def test_stream_chat_followup_inherits_auto_routed_sheet(tmp_path, monkeyp
     assert second_context["last_sheet_index"] == 2
     assert second_context["last_sheet_name"] == "Users"
     assert second_context["last_turn"]["sheet_name"] == "Users"
+    assert isinstance(second_context["visited_sheets"], list)
+    assert second_context["visited_sheets"][0]["sheet_index"] == 2
     assert second_events[0]["meta"]["resolved_sheet_index"] == 2
     assert second_events[1]["pipeline"]["source_sheet_index"] == 2
 
+
+@pytest.mark.asyncio
+async def test_stream_chat_followup_can_switch_to_another_sheet_sequentially(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_switch.xlsx"
+    _write_workbook(workbook_path)
+
+    first_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-switch",
+        chat_text="Show total amount in Sales.",
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+    conversation_id = str(first_events[0]["conversation_id"])
+
+    second_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-switch",
+        chat_text="Continue on another sheet.",
+        mode="auto",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+    )
+
+    assert second_events[0]["meta"]["resolved_sheet_index"] == 2
+    assert second_events[0]["meta"]["resolved_sheet_name"] == "Users"
+    assert second_events[0]["meta"]["sheet_routing"]["reason"] == "followup_switch_to_another_sheet"
+    assert second_events[0]["meta"]["sheet_sequence"]["switched_from_previous"] is True
+    assert second_events[0]["meta"]["sheet_sequence"]["previous_sheet_index"] == 1
+    assert second_events[1]["pipeline"]["sheet_sequence"]["last_sheet_switch_reason"] == "followup_switch_to_another_sheet"
+    assert second_events[1]["pipeline"]["source_sheet_index"] == 2
+    assert second_events[1]["pipeline"]["observability"]["sheet_switch_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_followup_can_switch_back_to_previous_sheet(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_switch_back.xlsx"
+    _write_workbook(workbook_path)
+
+    first_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-switch-back",
+        chat_text="Show total amount in Sales.",
+        mode="text",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+    conversation_id = str(first_events[0]["conversation_id"])
+
+    await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-switch-back",
+        chat_text="Continue on another sheet.",
+        mode="auto",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+    )
+
+    third_events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-switch-back",
+        chat_text="Back to previous sheet and continue.",
+        mode="auto",
+        sheet_index=2,
+        sheet_override=False,
+        locale="en",
+        conversation_id=conversation_id,
+    )
+
+    third_context = planner.calls[2]["followup_context"]
+    assert isinstance(third_context, dict)
+    assert third_context["sheet_reference_hint"] == "previous"
+    assert third_context["previous_sheet_index"] == 1
+    assert isinstance(third_context["recent_sheet_trajectory"], list)
+    assert len(third_context["recent_sheet_trajectory"]) >= 2
+
+    assert third_events[0]["meta"]["resolved_sheet_index"] == 1
+    assert third_events[0]["meta"]["sheet_routing"]["reason"] == "followup_switch_to_previous_sheet"
+    assert third_events[1]["pipeline"]["source_sheet_index"] == 1
+    assert third_events[1]["pipeline"]["sheet_sequence"]["last_sheet_switch_reason"] == "followup_switch_to_previous_sheet"
 
 @pytest.mark.asyncio
 async def test_stream_chat_reuses_session_cached_dataframes(tmp_path, monkeypatch) -> None:

@@ -5,12 +5,14 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
 現在の安定版リリースは `v0.2.0` です。
+`main` ブランチの現状（`v0.3.0` に向けた開発ライン）では、workbook レベルの multi-sheet 検出・clarification と A→B の順次分析ガイドが利用できます。
 
 ## 現在の対象範囲
 
 現在のリリースは次に集中しています。
 
 - ワークブック内で一度に 1 つのシートを対象にする分析
+- workbook レベルの multi-sheet 質問検出と分解ガイド
 - 自然言語によるスプレッドシート分析
 - clarification と follow-up 文脈を持つ複数ターン対話
 - 実行範囲、routing、結果テーブル、チャートの可視化
@@ -21,6 +23,8 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 - ファイルアップロード、sheet 一覧、プレビュー
 - ワークブック内で 1 つの対象シートを選ぶ auto routing
+- 同一 workbook 内の順次 multi-sheet 分析（A を先に分析し、その後 B に進む）
+- multi-sheet 質問に対する clarification と分解ヒント
 - 行数、合計、平均、重複除去件数
 - 期間比較: 前期比 / 前年比、差分、比率
 - Top N / ranking
@@ -32,13 +36,14 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - 軽量な時系列 forecast
 - `auto / text / chart` mode 切替
 - ユーザーが確認できる分析パイプライン、sheet routing 要約、構造化回答
+- routing 理由と説明文の可視化（`reason` / `explanation` / `explanation_code`）
 - シート/列の clarification カードを分けて表示し、選択後は自然な確認文で同じ質問を継続
 - 結果カードの「続けて質問」提案（入力欄へ自動反映後に編集して送信可能）
 - intent 回帰コーパスとオフライン評価（CI に統合）
 
 現在まだ対応していないもの：
 
-- 複数シート join や multi-sheet 複合分析
+- 1 ターン内での複数シート join や multi-sheet 複合分析
 - 高度統計
 - 因果推論
 - 本番向け object storage と永続 session backend
@@ -67,8 +72,9 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 1. Excel または CSV ファイルをアップロードする
 2. workbook 内の sheet をプレビューし、必要に応じて対象 sheet を選ぶ
 3. 自然言語で質問する
-4. 質問が曖昧な場合は、sheet または列の clarification を行う
+4. multi-sheet 質問の場合は clarification を受け、まず 1 シートから開始する
 5. routing、実行範囲、表、チャートとあわせて結果を確認する
+6. 必要に応じて follow-up で別シートへ順次切り替える
 
 ## ローカル開発
 
@@ -145,7 +151,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 現在のバックエンド主要フロー：
 
 1. workbook context 構築
-2. 単一シート routing
+2. workbook routing（1 ターン 1 シート実行 + multi-sheet clarification / 分解ガイド）
 3. capability guard
 4. planner と意図理解
 5. validation と repair
@@ -161,6 +167,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 - カテゴリ分けされた example prompt
 - execution pipeline visibility
 - sheet routing visibility
+- routing explanation visibility（`reason`、`explanation`、`explanation_code`）
 
 ## 契約と検証
 

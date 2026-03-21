@@ -2,9 +2,10 @@
 
 ## 1. Positioning
 
-Talk2Sheet is an open-source spreadsheet conversation framework for Excel and CSV analysis. The current release is intentionally focused on:
+Talk2Sheet is an open-source spreadsheet conversation framework for Excel and CSV analysis. The current architecture is intentionally focused on:
 
-- workbook-aware routing to a single sheet
+- workbook-aware routing with one-sheet execution per turn
+- multi-sheet question detection, clarification, and sequential decomposition (A first, then B)
 - natural language to structured analysis planning
 - pandas-based executable analysis
 - multi-turn conversation with clarification, follow-up, mode switching, and context carry-over
@@ -12,8 +13,8 @@ Talk2Sheet is an open-source spreadsheet conversation framework for Excel and CS
 
 This is not positioned as a general BI or advanced statistics platform yet. The current boundary is explicit:
 
-- Supported: workbook-aware single-sheet selection, auto routing, follow-up conversation, detail / summary / ranking / trend / basic chart / lightweight forecast
-- Not supported yet: cross-sheet joins, combined multi-sheet analysis, relationship modeling across sheets, advanced statistics, causal inference, complex forecasting workflows
+- Supported: workbook-aware routing, per-turn single-sheet execution, sequential multi-sheet follow-up, detail / summary / ranking / trend / basic chart / lightweight forecast
+- Not supported yet: cross-sheet joins in one step, unrestricted combined multi-sheet execution, relationship modeling across sheets, advanced statistics, causal inference, complex forecasting workflows
 
 ## 2. Implemented Capabilities
 
@@ -24,10 +25,12 @@ This is not positioned as a general BI or advanced statistics platform yet. The 
 - workbook-aware single-sheet routing
   - explicit sheet reference in the question
   - auto routing from sheet name / column name signals
+  - multi-sheet clarification and decomposition hints
+  - sequential sheet switch in follow-up turns
   - sheet clarification when candidates are ambiguous
   - manual sheet override through `sheet_override`
-  - support for resolving one target sheet inside a workbook and completing the analysis on that sheet
-  - no combined cross-sheet execution yet
+  - support for resolving one target sheet per turn inside a workbook
+  - no cross-sheet join execution yet
 - natural-language analysis
   - row count, total, average, distinct count
   - Top N / ranking
@@ -134,12 +137,14 @@ Current routing priority is roughly:
 
 1. single-sheet shortcut
 2. clarification resolution
-3. explicit sheet reference in the question
-4. manual `sheet_override`
-5. follow-up inheritance from the last turn
-6. auto scoring from sheet names, columns, and hints
-7. clarification when multiple candidates are too close
-8. fallback to the requested sheet
+3. manual `sheet_override`
+4. follow-up sheet-switch resolution (explicit / previous / another)
+5. multi-sheet clarification for decomposition
+6. explicit sheet reference in the question
+7. follow-up inheritance from the last turn
+8. auto scoring from sheet names, columns, and hints
+9. clarification when multiple candidates are too close
+10. fallback to the requested sheet
 
 ### 4.5 Planning and semantic layer
 
@@ -225,7 +230,7 @@ The frontend lives under `apps/web/src/` and has already moved away from a singl
 - `apps/web/src/components/ConversationComposer.vue`
   input, mode switch, examples / guide popovers
 - `apps/web/src/components/ConversationMessage.vue`
-  answer card, sheet routing summary, execution disclosure, detail table, chart, structured answer
+  answer card, sheet routing summary/reason explanation, execution disclosure, detail table, chart, structured answer
 - `apps/web/src/components/ClarificationOptions.vue`
   clarification interaction
 - `apps/web/src/components/DataTable.vue`
@@ -265,6 +270,7 @@ Current contract flow:
 ### 6.2 Testing and CI
 
 - API: `pytest -q apps/api`
+- intent regression (v0.3 corpus): `python apps/api/scripts/eval_intent_cases.py`
 - Web: `npm run ci`
 - frontend CI includes:
   - feature boundary checks
@@ -283,6 +289,11 @@ The system already includes request-level baseline observability:
   - `request_id`
   - `request_total_ms`
   - stage timings
+  - `multi_sheet_detected`
+  - `clarification_sheet_count`
+  - `sheet_switch_count`
+  - `multi_sheet_failure_reason`
+  - `multi_sheet_top_failure_reasons` (lightweight in-process aggregate)
 
 ### 6.4 How To Troubleshoot With request_id
 
@@ -306,6 +317,8 @@ This is the shortest path from a user-visible error to the failing backend stage
 ### 7.1 Supported now
 
 - workbook-aware single-sheet auto routing
+- workbook-level multi-sheet clarification and decomposition guidance
+- sequential workbook analysis across sheets in follow-up turns (A then B)
 - sheet clarification and manual override
 - follow-up context inheritance
 - semantic intent understanding
@@ -314,7 +327,7 @@ This is the shortest path from a user-visible error to the failing backend stage
 
 ### 7.2 Not supported yet
 
-- cross-sheet joins and combined multi-sheet analysis
+- cross-sheet joins and one-step combined multi-sheet analysis
 - multi-sheet relationship reasoning and join planning
 - advanced statistics
 - long-running async job orchestration
@@ -325,7 +338,7 @@ This is the shortest path from a user-visible error to the failing backend stage
 
 The next steps should extend the current design rather than replace it:
 
-1. build better workbook-level handling for questions that refer to multiple sheets, including detection, clarification, and problem decomposition, before introducing unrestricted joins
+1. introduce explicit cross-sheet relationship modeling and guarded join planning on top of the current sequential multi-sheet flow
 2. extract session store and dataframe cache into replaceable adapters backed by Redis or a database
 3. split planner / repair / capability governance into clearer policy surfaces
 4. evolve the frontend pipeline view from debug-adjacent metadata into a more productized explanation layer

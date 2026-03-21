@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased (toward v0.3.0)
+
+Workbook-level routing and multi-sheet usability update, focused on safe decomposition and clearer user-visible reasoning.
+
+### Highlights
+
+- Added workbook-level multi-sheet detection and clarification flow for questions that reference multiple sheets
+- Added sequential multi-sheet follow-up routing (analyze sheet A first, then continue on sheet B in later turns)
+- Added routing explanation visibility (`reason`, `explanation`, `explanation_code`) in conversation cards
+- Expanded intent regression corpus for v0.3 scenarios (single-sheet + multi-sheet clarification/sequence/follow-up)
+- Added lightweight multi-sheet observability fields in pipeline and logs:
+  - `multi_sheet_detected`
+  - `clarification_sheet_count`
+  - `sheet_switch_count`
+  - `multi_sheet_failure_reason`
+  - `multi_sheet_top_failure_reasons`
+- Synchronized README and architecture docs in English / Chinese / Japanese with the same user-facing capability boundary language
+
+### Current Scope
+
+- Workbook-aware routing with one-sheet execution per turn
+- Multi-sheet question clarification and sequential A→B analysis guidance
+- Row count, totals, averages, distinct count
+- Compare/trend/ranking/detail/basic chart/lightweight forecast
+- Clarification and multi-turn follow-up conversation
+- Request-level and routing-level observability for troubleshooting
+
+### Out of Scope
+
+- Cross-sheet join execution in one step
+- Unrestricted combined multi-sheet analysis
+- Advanced statistics and causal inference
+- Production-ready object storage and persistent session backends
+
+### Validation
+
+- `pytest -q apps/api/tests/planning/test_intent_regression.py apps/api/tests/test_spreadsheet_conversation.py apps/api/tests/test_spreadsheet_sheet_router.py apps/api/tests/test_spreadsheet_planner_modules.py`
+- `python apps/api/scripts/eval_intent_cases.py`
+
 ## v0.2.0
 
 Single-sheet analysis depth release with stronger intent handling, richer answer structure, and cleaner quality gates.

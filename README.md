@@ -5,12 +5,14 @@ Talk2Sheet is an open-source full-stack framework for conversational analytics o
 It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
 Latest stable release: `v0.2.0`.
+Main branch status (toward `v0.3.0`): workbook-level multi-sheet clarification and sequential A→B analysis guidance are available.
 
 ## Current Scope
 
 Current release focus:
 
 - workbook-aware analysis on one sheet at a time
+- workbook-level multi-sheet detection and decomposition guidance
 - natural-language spreadsheet analysis
 - multi-turn conversation with clarification and follow-up context
 - visible execution scope, routing summary, result tables, and charts
@@ -21,6 +23,8 @@ Supported now:
 
 - file upload, sheet list, and preview
 - workbook-aware routing to one target sheet
+- sequential workbook analysis across sheets (analyze A first, then continue on B in follow-up turns)
+- multi-sheet question clarification with decomposition hints
 - row count, totals, averages, distinct count
 - period compare: month-over-month / year-over-year, delta, ratio
 - Top N / ranking
@@ -32,13 +36,14 @@ Supported now:
 - lightweight time-series forecasting
 - `auto / text / chart` response mode
 - user-visible analysis pipeline, sheet-routing summary, and structured answer output
+- user-visible routing explanations and reason codes
 - clarification cards for both sheet and column resolution, with natural confirmation follow-up
 - result-card follow-up suggestions that prefill the next question draft
 - intent regression corpus and offline evaluation in CI
 
 Not supported yet:
 
-- cross-sheet joins or combined multi-sheet analysis
+- cross-sheet joins or combined multi-sheet analysis in one step
 - advanced statistics
 - causal inference
 - production object storage and persistent session backends
@@ -67,8 +72,9 @@ packages/contracts/  generated OpenAPI artifacts
 1. upload an Excel or CSV file
 2. preview workbook sheets and select a sheet when needed
 3. ask a natural-language question
-4. let the system clarify the target sheet or column when the question is ambiguous
+4. for multi-sheet questions, let the system clarify and start from one sheet first
 5. review the answer together with routing, scope, tables, and charts
+6. continue with another sheet in follow-up turns when needed
 
 ## Local Development
 
@@ -147,7 +153,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 The backend request flow currently includes:
 
 1. workbook context loading
-2. single-sheet routing
+2. workbook routing (single-sheet execution per turn, with multi-sheet clarification/decomposition guidance)
 3. capability guard
 4. planner and intent understanding
 5. validation and repair
@@ -163,6 +169,7 @@ The frontend currently provides:
 - categorized example prompts
 - execution pipeline visibility
 - sheet routing visibility
+- routing explanation visibility (`reason`, `explanation`, `explanation_code`)
 
 ## Contracts and CI
 

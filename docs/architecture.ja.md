@@ -2,9 +2,10 @@
 
 ## 1. 位置づけ
 
-Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算対話分析フレームワークです。現時点では次の範囲に集中しています。
+Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算対話分析フレームワークです。現在のアーキテクチャは次の範囲に集中しています。
 
-- ワークブック内で 1 つのシートへルーティングして分析すること
+- workbook routing と 1 ターン 1 シート実行
+- multi-sheet 質問の検出、clarification、順次分解（A を先に、次に B）
 - 自然言語を構造化された分析プランへ変換すること
 - pandas ベースで実行可能な分析パイプラインを持つこと
 - clarification、follow-up、mode 切替、文脈継承を伴う複数ターン対話
@@ -12,8 +13,8 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 現状では汎用 BI や高度統計プラットフォームとしては位置づけていません。境界は明確です。
 
-- 対応済み: ワークブック内単一シート選択、auto routing、follow-up、detail / summary / ranking / trend / basic chart / lightweight forecast
-- 未対応: 複数シート join、複合 multi-sheet 分析、シート間リレーション推論、高度統計、因果推論、複雑な予測ワークフロー
+- 対応済み: workbook routing、1 ターン 1 シート実行、順次 multi-sheet follow-up、detail / summary / ranking / trend / basic chart / lightweight forecast
+- 未対応: 1 ターン内の複数シート join、自由な複合 multi-sheet 実行、シート間リレーション推論、高度統計、因果推論、複雑な予測ワークフロー
 
 ## 2. 実装済みの機能
 
@@ -24,10 +25,12 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - ワークブック内単一シートルーティング
   - 質問内の明示的な sheet 指定
   - sheet 名 / 列名に基づく auto routing
+  - multi-sheet 質問に対する clarification と分解ヒント
+  - follow-up での順次シート切替
   - 候補が競合した場合の sheet clarification
   - `sheet_override` による手動切替の優先
-  - 同一 workbook 内で対象シートを特定し、そのシート上で分析を完結できる
-  - 複数シートをまたぐ統合実行にはまだ対応していない
+  - 同一 workbook 内でターンごとに対象シートを特定し、そのシート上で分析を完結できる
+  - 複数シート join 実行にはまだ対応していない
 - 自然言語分析
   - 行数、合計、平均、重複除去件数
   - Top N / ranking
@@ -134,12 +137,14 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 1. 単一シート workbook の即時確定
 2. clarification resolution
-3. 質問文内の明示的な sheet 指定
-4. 手動切替の `sheet_override`
-5. 直前ターンの follow-up 継承
-6. sheet 名、列名、hint に基づく auto scoring
-7. 候補が拮抗した場合の clarification
-8. requested sheet への fallback
+3. 手動切替の `sheet_override`
+4. follow-up シート切替解決（明示指定 / 前シート / 別シート）
+5. multi-sheet clarification と分解分岐
+6. 質問文内の明示的な sheet 指定
+7. 直前ターンの follow-up 継承
+8. sheet 名、列名、hint に基づく auto scoring
+9. 候補が拮抗した場合の clarification
+10. requested sheet への fallback
 
 ### 4.5 Planning と semantic 層
 
@@ -225,7 +230,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 - `apps/web/src/components/ConversationComposer.vue`
   input、mode switch、example / guide popover
 - `apps/web/src/components/ConversationMessage.vue`
-  answer card、sheet routing summary、execution disclosure、detail table、chart、structured answer
+  answer card、sheet routing summary / 理由説明、execution disclosure、detail table、chart、structured answer
 - `apps/web/src/components/ClarificationOptions.vue`
   clarification interaction
 - `apps/web/src/components/DataTable.vue`
@@ -265,6 +270,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 ### 6.2 テストと CI
 
 - API: `pytest -q apps/api`
+- intent 回帰（v0.3 コーパス）: `python apps/api/scripts/eval_intent_cases.py`
 - Web: `npm run ci`
 - frontend CI の内容
   - feature boundary check
@@ -283,6 +289,11 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
   - `request_id`
   - `request_total_ms`
   - stage timings
+  - `multi_sheet_detected`
+  - `clarification_sheet_count`
+  - `sheet_switch_count`
+  - `multi_sheet_failure_reason`
+  - `multi_sheet_top_failure_reasons`（プロセス内の軽量集計）
 
 ### 6.4 request_id を使った切り分け
 
@@ -306,6 +317,8 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 ### 7.1 現在対応しているもの
 
 - workbook-aware な単一シート auto routing
+- workbook レベルの multi-sheet clarification / 分解ガイド
+- follow-up での順次シート分析（A→B）
 - sheet clarification と manual override
 - follow-up context 継承
 - semantic intent の理解
@@ -314,7 +327,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 ### 7.2 まだ未対応のもの
 
-- 複数シート join と複合 multi-sheet 分析
+- 1 ターン内の複数シート join と自由な複合 multi-sheet 分析
 - multi-sheet relationship reasoning と join planning
 - 高度統計
 - 長時間実行の async job orchestration
@@ -325,7 +338,7 @@ Talk2Sheet は、Excel / CSV を対象とするオープンソースの表計算
 
 次のステップでは、現在の設計を置き換えるのではなく、その上に能力を積み上げるのが妥当です。
 
-1. 単一シート routing を前提に、複数シートにまたがる質問の検出、clarification、問題分解を強化し、安定した関係モデルがない段階で unrestricted join を直接開放しない
+1. 現在の順次 multi-sheet フローの上に、明示的な制約付きで cross-sheet relationship モデルと join planning を導入する
 2. session store と dataframe cache を Redis や DB backed な差し替え可能アダプタへ拡張する
 3. planner / repair / capability governance をより明確な policy surface に分割する
 4. フロントの pipeline 表示を debug 情報寄りのものから、よりプロダクト化された説明 UI へ進化させる

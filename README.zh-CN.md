@@ -5,12 +5,14 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 它的核心目标是：用户围绕表格数据提出自然语言问题，系统在 workbook 内定位合适的目标 sheet，将问题翻译成可执行的分析计划，用 pandas 执行分析，再把答案和执行链路一起返回给前端。
 
 当前稳定版本：`v0.2.0`。
+`main` 分支当前状态（面向 `v0.3.0` 迭代）：已支持 workbook 级多 sheet 识别澄清与 A→B 顺序分析引导。
 
 ## 当前范围
 
 当前版本聚焦：
 
 - workbook 内一次针对一个 sheet 的分析
+- workbook 级多 sheet 问题识别与拆解引导
 - 自然语言表格分析
 - 带澄清和追问上下文的多轮对话
 - 可见的执行口径、路由信息、结果表格和图表
@@ -21,6 +23,8 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 - 文件上传、sheet 列表、表格预览
 - workbook 内单个目标 sheet 的自动路由
+- 同一 workbook 内顺序多 sheet 分析（先 A 后 B，分轮执行）
+- 多 sheet 问题澄清与拆解提示
 - 总行数、总量、均值、去重计数
 - 周期对比：环比 / 同比、差值、倍数占比
 - Top N / 排名
@@ -32,13 +36,14 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 - 轻量时间序列预测
 - `auto / text / chart` 模式切换
 - 用户可见的分析链路、sheet 路由摘要和结构化回答
+- 路由原因与解释文案可见（`reason` / `explanation` / `explanation_code`）
 - 字段/工作表澄清卡片（区分类型），选择后自动用自然确认语继续原问题分析
 - 结果卡“继续问”建议，点击后自动回填输入框并可编辑发送
 - intent 回归语料与离线评测（已接入 CI 分层）
 
 当前暂不支持：
 
-- 跨 sheet join 或跨工作表联合分析
+- 单轮内跨 sheet join 或跨工作表联合分析
 - 高级统计
 - 因果推断
 - 生产级对象存储与持久化会话后端
@@ -67,8 +72,9 @@ packages/contracts/  生成的 OpenAPI 契约产物
 1. 上传 Excel 或 CSV 文件
 2. 预览 workbook 中的 sheet，并在需要时选择目标 sheet
 3. 输入自然语言问题
-4. 当问题不明确时，让系统先做 sheet 或字段澄清
+4. 如果问题涉及多个 sheet，让系统先澄清并从一个 sheet 开始
 5. 结合路由信息、执行范围、表格和图表查看分析结果
+6. 需要时在后续轮次继续切换到另一个 sheet
 
 ## 本地开发
 
@@ -145,7 +151,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 当前后端主链路包括：
 
 1. workbook context 构建
-2. 单 sheet 路由
+2. workbook 路由（单轮单 sheet 执行 + 多 sheet 澄清/拆解引导）
 3. capability guard
 4. planner 与意图理解
 5. validation 与 repair
@@ -161,6 +167,7 @@ TALK2SHEET_NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 - 分类示例问题
 - 执行链路可见性
 - sheet routing 可见性
+- 路由解释可见性（`reason`、`explanation`、`explanation_code`）
 
 ## 契约与校验
 

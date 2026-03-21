@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections import Counter
 import json
 import logging
 from pathlib import Path
+from threading import Lock
 from time import perf_counter
 from typing import AsyncGenerator
 
@@ -17,6 +19,9 @@ from .routing.sheet_router import route_sheet
 
 
 logger = logging.getLogger(__name__)
+_MULTI_SHEET_FAILURE_REASON_COUNTER: Counter[str] = Counter()
+_MULTI_SHEET_FAILURE_REASON_LOCK = Lock()
+_MULTI_SHEET_FAILURE_REASON_LIMIT = 5
 
 
 def _sse(payload: dict) -> str:
@@ -38,10 +43,47 @@ def _cache_token(path: Path, *, sheet_index: int, scope: str, limit: int | None 
     )
 
 
-def _sheet_routing_payload(workbook_context: object, routing_decision: object) -> dict[str, object]:
+def _sheet_routing_explanation(*, reason: str, matched_by: str, locale: str) -> str:
+    normalized_locale = str(locale or "").lower()
+    use_zh = normalized_locale.startswith("zh")
+    use_ja = normalized_locale.startswith("ja")
+    if reason == "explicit_sheet_reference":
+        return "问题里显式提到了该 sheet。" if use_zh else ("質問でこのシートが明示されました。" if use_ja else "The question explicitly mentioned this sheet.")
+    if reason == "clarification_resolution":
+        return "使用了你在澄清步骤里确认的 sheet。" if use_zh else ("確認ステップで選択したシートを使用しました。" if use_ja else "Used the sheet you selected in clarification.")
+    if reason == "manual_sheet_override":
+        return "使用了你手动选择的 sheet。" if use_zh else ("手動で選択したシートを使用しました。" if use_ja else "Used your manual sheet selection.")
+    if reason == "followup_inherit_previous_sheet":
+        return "沿用了上一轮分析所在的 sheet。" if use_zh else ("前ターンと同じシートを引き継ぎました。" if use_ja else "Inherited the sheet from the previous turn.")
+    if reason == "followup_switch_to_another_sheet":
+        return "根据追问切换到了另一个 sheet。" if use_zh else ("フォローアップ要求により別シートへ切り替えました。" if use_ja else "Switched to another sheet based on the follow-up request.")
+    if reason == "followup_switch_to_previous_sheet":
+        return "根据追问切换回上一个 sheet。" if use_zh else ("フォローアップ要求により前のシートへ戻しました。" if use_ja else "Switched back to the previous sheet based on the follow-up request.")
+    if reason == "followup_switch_to_explicit_sheet":
+        return "根据追问中明确指定的 sheet 进行了切换。" if use_zh else ("フォローアップで明示されたシートへ切り替えました。" if use_ja else "Switched to the sheet explicitly mentioned in the follow-up.")
+    if reason == "auto_routed_by_sheet_profile":
+        return "根据问题内容和字段匹配信号自动命中了该 sheet。" if use_zh else ("質問内容と列マッチ信号に基づいて自動ルーティングしました。" if use_ja else "Auto-routed to this sheet based on question and column-match signals.")
+    if reason == "ambiguous_sheet_match":
+        return "多个候选 sheet 评分接近，需要你确认。" if use_zh else ("複数シートのスコアが近いため確認が必要です。" if use_ja else "Multiple sheets had close scores, so clarification is required.")
+    if reason == "requested_sheet_default":
+        return "没有足够命中信号，按请求 sheet 兜底。" if use_zh else ("十分な一致信号がないため要求シートへフォールバックしました。" if use_ja else "No strong routing signal found; fell back to the requested sheet.")
+    if reason == "multi_sheet_needs_decomposition":
+        return "识别到多 sheet 问题，需先选择一个 sheet 顺序分析。" if use_zh else ("複数シート質問を検出したため、先に 1 シートを選択してください。" if use_ja else "Detected a multi-sheet question; choose one sheet first for sequential analysis.")
+    if reason == "single_sheet_workbook":
+        return "当前工作簿只有一个 sheet，直接在该 sheet 上执行。" if use_zh else ("単一シートのワークブックのため、そのまま実行しました。" if use_ja else "Workbook has a single sheet, so it was used directly.")
+    if matched_by == "auto_routing":
+        return "根据字段与问题语义匹配进行了自动路由。" if use_zh else ("列と質問の意味一致で自動ルーティングしました。" if use_ja else "Applied auto-routing from column and question semantics.")
+    return ""
+
+
+def _sheet_routing_payload(workbook_context: object, routing_decision: object, *, locale: str) -> dict[str, object]:
     sheet_count = len(getattr(workbook_context, "sheets", []) or [])
     payload = dict(routing_decision.model_dump()) if hasattr(routing_decision, "model_dump") else dict(routing_decision)
     payload["workbook_sheet_count"] = sheet_count
+    reason = str(payload.get("reason") or "")
+    matched_by = str(payload.get("matched_by") or "")
+    payload["explanation_code"] = reason or matched_by or "unknown"
+    payload["explanation"] = _sheet_routing_explanation(reason=reason, matched_by=matched_by, locale=locale)
     return payload
 
 
@@ -50,6 +92,117 @@ def _sheet_name_for_index(workbook_context: object, sheet_index: int) -> str:
         if int(getattr(sheet, "sheet_index", 0) or 0) == int(sheet_index or 0):
             return str(getattr(sheet, "sheet_name", "") or "")
     return ""
+
+
+def _visited_sheets_from_followup(followup_context: dict[str, object] | None) -> list[dict[str, object]]:
+    if not isinstance(followup_context, dict):
+        return []
+    raw = followup_context.get("visited_sheets")
+    if not isinstance(raw, list):
+        return []
+    visited: list[dict[str, object]] = []
+    seen: set[int] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sheet_index = int(item.get("sheet_index") or 0)
+        if sheet_index <= 0 or sheet_index in seen:
+            continue
+        seen.add(sheet_index)
+        visited.append(
+            {
+                "sheet_index": sheet_index,
+                "sheet_name": str(item.get("sheet_name") or ""),
+            }
+        )
+    return visited
+
+
+def _build_sheet_sequence_payload(
+    *,
+    followup_context: dict[str, object] | None,
+    resolved_sheet_index: int | None,
+    resolved_sheet_name: str,
+    routing_reason: str,
+) -> dict[str, object]:
+    previous_sheet_index = int((followup_context or {}).get("last_sheet_index") or 0) if isinstance(followup_context, dict) else 0
+    previous_sheet_name = str((followup_context or {}).get("last_sheet_name") or "") if isinstance(followup_context, dict) else ""
+    switched_from_previous = bool(
+        previous_sheet_index
+        and resolved_sheet_index
+        and int(previous_sheet_index) != int(resolved_sheet_index)
+    )
+
+    visited = _visited_sheets_from_followup(followup_context)
+    if resolved_sheet_index:
+        resolved_index = int(resolved_sheet_index)
+        if all(int(item.get("sheet_index") or 0) != resolved_index for item in visited):
+            visited.append({"sheet_index": resolved_index, "sheet_name": str(resolved_sheet_name or "")})
+
+    last_sheet_switch_reason = str(
+        routing_reason
+        if switched_from_previous and routing_reason
+        else ((followup_context or {}).get("last_sheet_switch_reason") or "")
+    )
+    return {
+        "previous_sheet_index": previous_sheet_index or None,
+        "previous_sheet_name": previous_sheet_name,
+        "switched_from_previous": switched_from_previous,
+        "last_sheet_switch_reason": last_sheet_switch_reason,
+        "visited_sheets": visited,
+    }
+
+
+def _resolve_multi_sheet_failure_reason(routing_decision: object) -> str:
+    status = str(getattr(routing_decision, "status", "") or "")
+    reason = str(getattr(routing_decision, "reason", "") or "")
+    boundary_status = str(getattr(routing_decision, "boundary_status", "") or "")
+    boundary_reason = str(getattr(routing_decision, "boundary_reason", "") or "")
+
+    if status != "clarification":
+        return ""
+    if reason == "followup_sheet_switch_clarification":
+        return reason
+    if boundary_status in {"multi_sheet_detected", "multi_sheet_out_of_scope"}:
+        if boundary_reason == "cross_sheet_join_not_supported":
+            return boundary_reason
+        if reason:
+            return reason
+        return boundary_reason
+    return ""
+
+
+def _record_multi_sheet_failure_reason(reason: str) -> dict[str, int]:
+    normalized = str(reason or "").strip()
+    if not normalized:
+        return {}
+    with _MULTI_SHEET_FAILURE_REASON_LOCK:
+        _MULTI_SHEET_FAILURE_REASON_COUNTER[normalized] += 1
+        return {
+            str(item_reason): int(item_count)
+            for item_reason, item_count in _MULTI_SHEET_FAILURE_REASON_COUNTER.most_common(_MULTI_SHEET_FAILURE_REASON_LIMIT)
+        }
+
+
+def _build_sheet_routing_observability(
+    *,
+    routing_decision: object,
+    sheet_sequence: dict[str, object],
+) -> dict[str, object]:
+    boundary_status = str(getattr(routing_decision, "boundary_status", "") or "")
+    clarification = getattr(routing_decision, "clarification", None)
+    clarification_options = getattr(clarification, "options", None)
+    clarification_sheet_count = len(clarification_options) if isinstance(clarification_options, list) else 0
+    sheet_switch_count = 1 if bool(sheet_sequence.get("switched_from_previous")) else 0
+    failure_reason = _resolve_multi_sheet_failure_reason(routing_decision)
+    top_failure_reasons = _record_multi_sheet_failure_reason(failure_reason)
+    return {
+        "multi_sheet_detected": int(boundary_status in {"multi_sheet_detected", "multi_sheet_out_of_scope"}),
+        "clarification_sheet_count": clarification_sheet_count,
+        "sheet_switch_count": sheet_switch_count,
+        "multi_sheet_failure_reason": failure_reason,
+        "multi_sheet_top_failure_reasons": top_failure_reasons,
+    }
 
 
 async def stream_spreadsheet_chat(
@@ -96,6 +249,22 @@ async def stream_spreadsheet_chat(
         )
         resolved_sheet_index = int(routing_decision.resolved_sheet_index or workbook_context.active_sheet_index or sheet_index or 1)
         resolved_sheet_name = str(routing_decision.resolved_sheet_name or workbook_context.active_sheet_name or "")
+        sheet_sequence = _build_sheet_sequence_payload(
+            followup_context=followup_context,
+            resolved_sheet_index=resolved_sheet_index if routing_decision.status == "resolved" else None,
+            resolved_sheet_name=resolved_sheet_name if routing_decision.status == "resolved" else "",
+            routing_reason=str(routing_decision.reason or ""),
+        )
+        sheet_routing_observability = _build_sheet_routing_observability(
+            routing_decision=routing_decision,
+            sheet_sequence=sheet_sequence,
+        )
+        planner_followup_context = dict(followup_context) if isinstance(followup_context, dict) else followup_context
+        if isinstance(planner_followup_context, dict):
+            planner_followup_context["current_sheet_index"] = resolved_sheet_index
+            planner_followup_context["current_sheet_name"] = resolved_sheet_name
+            planner_followup_context["sheet_switched_from_previous"] = bool(sheet_sequence.get("switched_from_previous"))
+            planner_followup_context["sheet_switch_reason"] = str(sheet_sequence.get("last_sheet_switch_reason") or "")
         session.sheet_index = resolved_sheet_index
         session.sheet_name = resolved_sheet_name
 
@@ -117,7 +286,9 @@ async def stream_spreadsheet_chat(
                     "conversation_id": session.conversation_id,
                     "followup_turn_count": int(followup_context.get("turn_count") or 0) if followup_context else 0,
                     "followup_context_reset": context_reset,
-                    "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision),
+                    "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision, locale=locale),
+                    "sheet_sequence": sheet_sequence,
+                    "observability": {"sheet_routing": sheet_routing_observability},
                 },
             }
             yield _sse(meta_event)
@@ -125,14 +296,32 @@ async def stream_spreadsheet_chat(
             pipeline = {
                 "status": "clarification",
                 "clarification_stage": "sheet_routing",
-                "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision),
+                "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision, locale=locale),
+                "sheet_sequence": sheet_sequence,
                 "clarification": routing_decision.clarification.model_dump(),
                 "workbook_sheets": [sheet.model_dump() for sheet in workbook_context.sheets],
                 "observability": {
                     "request_id": request_id,
                     "request_total_ms": round((perf_counter() - request_started_at) * 1000, 3),
+                    **sheet_routing_observability,
                 },
             }
+            log_event(
+                logger,
+                "spreadsheet_chat_clarification",
+                request_id=request_id,
+                file_id=file_id,
+                conversation_id=session.conversation_id,
+                sheet_index=sheet_index,
+                resolved_sheet_index=None,
+                routing_reason=str(routing_decision.reason or ""),
+                boundary_status=str(routing_decision.boundary_status or ""),
+                multi_sheet_detected=sheet_routing_observability["multi_sheet_detected"],
+                clarification_sheet_count=sheet_routing_observability["clarification_sheet_count"],
+                sheet_switch_count=sheet_routing_observability["sheet_switch_count"],
+                multi_sheet_failure_reason=sheet_routing_observability["multi_sheet_failure_reason"],
+                multi_sheet_top_failure_reasons=sheet_routing_observability["multi_sheet_top_failure_reasons"],
+            )
             yield _sse(
                 {
                     "request_id": request_id,
@@ -211,6 +400,11 @@ async def stream_spreadsheet_chat(
             mode=mode,
             rows_loaded=rows_loaded,
             sampled_cache_hit=sampled_cache_hit,
+            multi_sheet_detected=sheet_routing_observability["multi_sheet_detected"],
+            clarification_sheet_count=sheet_routing_observability["clarification_sheet_count"],
+            sheet_switch_count=sheet_routing_observability["sheet_switch_count"],
+            multi_sheet_failure_reason=sheet_routing_observability["multi_sheet_failure_reason"],
+            multi_sheet_top_failure_reasons=sheet_routing_observability["multi_sheet_top_failure_reasons"],
         )
 
         meta_event = {
@@ -231,11 +425,13 @@ async def stream_spreadsheet_chat(
                 "conversation_id": session.conversation_id,
                 "followup_turn_count": int(followup_context.get("turn_count") or 0) if followup_context else 0,
                 "followup_context_reset": context_reset,
-                "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision),
+                "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision, locale=locale),
+                "sheet_sequence": sheet_sequence,
                 "header_plan": header_plan,
                 "header_health": header_health,
                 "sampled_cache_hit": sampled_cache_hit,
                 "sampled_load_ms": sampled_load_ms,
+                "observability": {"sheet_routing": sheet_routing_observability},
             },
         }
         yield _sse(meta_event)
@@ -270,17 +466,19 @@ async def stream_spreadsheet_chat(
             requested_mode=mode,
             locale=locale,
             rows_loaded=rows_loaded,
-            followup_context=followup_context,
+            followup_context=planner_followup_context,
             source_path=path,
             source_sheet_index=resolved_sheet_index,
             exact_source_df_loader=_load_exact_source_df,
         )
-        result.pipeline["sheet_routing"] = _sheet_routing_payload(workbook_context, routing_decision)
+        result.pipeline["sheet_routing"] = _sheet_routing_payload(workbook_context, routing_decision, locale=locale)
+        result.pipeline["sheet_sequence"] = sheet_sequence
         result.pipeline["source_sheet_index"] = resolved_sheet_index
         result.pipeline.setdefault("source_sheet_name", sheet_name)
         result.pipeline.setdefault("observability", {})
         result.pipeline["observability"]["request_id"] = request_id
         result.pipeline["observability"]["request_total_ms"] = round((perf_counter() - request_started_at) * 1000, 3)
+        result.pipeline["observability"].update(sheet_routing_observability)
 
         pipeline_event = {
             "request_id": request_id,
@@ -340,6 +538,11 @@ async def stream_spreadsheet_chat(
             answer_provider=str(((result.pipeline.get("answer_generation") or {}) if isinstance(result.pipeline, dict) else {}).get("provider_used") or ""),
             exact_used=result.execution_disclosure.exact_used,
             total_ms=result.pipeline.get("observability", {}).get("total_ms"),
+            multi_sheet_detected=sheet_routing_observability["multi_sheet_detected"],
+            clarification_sheet_count=sheet_routing_observability["clarification_sheet_count"],
+            sheet_switch_count=sheet_routing_observability["sheet_switch_count"],
+            multi_sheet_failure_reason=sheet_routing_observability["multi_sheet_failure_reason"],
+            multi_sheet_top_failure_reasons=sheet_routing_observability["multi_sheet_top_failure_reasons"],
         )
         yield _sse(answer_event)
         yield _sse({"request_id": request_id, "file_id": file_id, "conversation_id": session.conversation_id, "answer": "<|EOS|>"})
