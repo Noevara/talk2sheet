@@ -288,19 +288,22 @@ def _build_multi_sheet_clarification(
     reason = _localized_text(
         locale,
         zh=(
-            "检测到你在同一问题中提到了多个工作表。当前不支持跨 sheet 联合分析，"
+            "检测到你在同一问题中提到了多个工作表。该请求超出当前受控 Join Beta 范围。"
+            "Join Beta 当前仅支持两表、单键、inner/left、聚合类问题（sum/count/avg/top/trend）。"
             "请先选择一个 sheet 开始，我可以再继续分析另一个。"
             if is_out_of_scope
             else "检测到这是多 sheet 问题。请先选择一个 sheet 开始，我可以再继续分析另一个。"
         ),
         en=(
-            "Detected references to multiple sheets in one question. Cross-sheet join is not supported yet. "
+            "Detected references to multiple sheets in one question. This request exceeds the controlled Join Beta scope. "
+            "Join Beta currently supports two-sheet, single-key, inner/left joins for aggregate questions (sum/count/avg/top/trend). "
             "Choose one sheet to start, and I can continue with another sheet next."
             if is_out_of_scope
             else "Detected a multi-sheet question. Choose one sheet to start, and I can continue with another sheet next."
         ),
         ja=(
-            "1つの質問で複数シートが参照されています。シート横断 join はまだ未対応です。"
+            "1つの質問で複数シートが参照されています。この要求は現在の制御付き Join Beta 範囲外です。"
+            "Join Beta は 2 シート・単一キー・inner/left・集計系質問（sum/count/avg/top/trend）のみ対応します。"
             "まず 1 つ選んで開始し、その後に別シートを続けて分析できます。"
             if is_out_of_scope
             else "複数シートの質問を検出しました。まず 1 つ選んで開始し、その後に別シートを続けて分析できます。"

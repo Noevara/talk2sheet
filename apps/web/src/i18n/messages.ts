@@ -176,6 +176,24 @@ export interface UiMessages {
   stepComparisonPreviousLabel: string;
   stepComparisonCurrentLabel: string;
   stepComparisonIndependentHint: string;
+  joinQualityLabel: string;
+  joinQualityPreflightStatusLabel: string;
+  joinQualityExecutionStatusLabel: string;
+  joinQualityJoinTypeLabel: string;
+  joinQualityJoinKeyLabel: string;
+  joinQualityMatchRateLabel: string;
+  joinQualityMatchedRowsLabel: string;
+  joinQualityLeftUnmatchedLabel: string;
+  joinQualityRightUnmatchedLabel: string;
+  joinQualityRowMultiplierLabel: string;
+  joinQualityFallbackLabel: string;
+  joinQualitySignalsLabel: string;
+  joinQualityStatusPassLabel: string;
+  joinQualityStatusWarnLabel: string;
+  joinQualityStatusFailLabel: string;
+  joinQualityStatusNotApplicableLabel: string;
+  joinQualityExecutedLabel: string;
+  joinQualityFallbackAppliedLabel: string;
   uploadError: string;
   uploadInvalidFileError: string;
   uploadTooLargeError: string;
@@ -200,9 +218,11 @@ export const messages: Record<Locale, UiMessages> = {
     brand: "Talk2Sheet",
     tagline: "Natural-language analytics and lightweight forecasting for Excel and CSV in a standalone open-source full-stack workspace.",
     capabilityTitle: "Current capability",
-    capabilityBody: "Workbook-aware single-sheet routing, single-sheet analytics, whole-sheet execution disclosure, detail rows, Top N, trend charts, structured pipeline feedback, and lightweight time-series forecasting.",
+    capabilityBody:
+      "Workbook-aware single-sheet routing, single-sheet analytics, sequential multi-sheet analysis (A then B), controlled Join Beta (two-sheet, single-key, inner/left, aggregate-only), join preflight with quality fallback, whole-sheet execution disclosure, detail rows, Top N, trend charts, and lightweight forecasting.",
     outOfScopeTitle: "Not in MVP",
-    outOfScopeBody: "Workbook-aware sheet selection is supported, but cross-sheet joins or combined multi-sheet analysis are still out of scope, along with advanced statistics, causal inference, complex forecasting workflows, and private infrastructure integrations.",
+    outOfScopeBody:
+      "Workbook routing, sequential multi-sheet analysis, and controlled Join Beta are supported. Still out of scope: arbitrary joins/unions (multi-key, multi-hop, 3+ sheets, SQL-style composition), advanced statistics, causal inference, complex forecasting workflows, and private infrastructure integrations.",
     languageLabel: "Language",
     uploadTitle: "Upload workbook",
     uploadHint: "Drop an .xlsx, .xls, or .csv file to start a single-sheet conversation inside a workbook.",
@@ -220,14 +240,16 @@ export const messages: Record<Locale, UiMessages> = {
     chatTitle: "Conversation",
     chatHint: "The backend streams planner metadata and the final answer over SSE, so execution scope and answer generation stay inspectable.",
     chatEmpty:
-      "Start with a single-sheet question, then continue with sequential workbook analysis (A then B). Cross-sheet join is still not supported.",
+      "Start with a single-sheet question, continue sequentially (A then B), or try a Join Beta request (two sheets, one key, inner/left, aggregate-only).",
     examplesButtonLabel: "Examples",
     guideButtonLabel: "Guide",
     quickStartTitle: "Start with one guided question",
-    quickStartBody: "Your file is loaded. Start with one question about the current sheet to see the result card, scope disclosure, and pipeline behavior.",
+    quickStartBody:
+      "Your file is loaded. Start with one current-sheet question, or try a Join Beta style prompt that joins two sheets by one key and asks for aggregate output.",
     quickStartPrimary: "Ask first question",
     quickStartSecondary: "Or choose another prompt",
-    questionPlaceholder: "Ask about one sheet at a time, for example: Show the monthly revenue trend in the current sheet as a line chart, or forecast next month's total amount.",
+    questionPlaceholder:
+      "Ask about one sheet at a time, or use Join Beta scope (two sheets, one key, inner/left, aggregate-only), for example: Join Orders and Users by email, then show top 5 regions by total amount.",
     modeLabel: "Mode",
     modeAutoLabel: "Auto",
     modeTextLabel: "Text",
@@ -275,9 +297,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodRequestedLabel: "Requested sheet fallback",
     routingBoundarySingleSheetLabel: "Single-sheet in scope",
     routingBoundaryDetectedLabel: "Multi-sheet intent detected (sequential analysis only)",
-    routingBoundaryOutOfScopeLabel: "Cross-sheet join is out of scope",
+    routingBoundaryOutOfScopeLabel: "Cross-sheet request exceeds Join Beta scope",
     routingBoundaryOutOfScopeHint:
-      "Current version supports workbook routing and sequential single-sheet analysis only. Cross-sheet join or union is not supported yet.",
+      "Current version supports workbook routing, sequential single-sheet analysis, and controlled Join Beta (two-sheet, single-key, inner/left, aggregate-only). Multi-key joins, multi-hop joins, joins across 3+ sheets, and union-style combinations are not supported.",
     filterSummaryLabel: "Applied filters",
     topKSummaryLabel: "Top K",
     trendGrainLabel: "Trend grain",
@@ -368,6 +390,24 @@ export const messages: Record<Locale, UiMessages> = {
     stepComparisonPreviousLabel: "Previous step",
     stepComparisonCurrentLabel: "Current step",
     stepComparisonIndependentHint: "Each step is computed independently per sheet; this is not a cross-sheet join result.",
+    joinQualityLabel: "Join quality",
+    joinQualityPreflightStatusLabel: "Preflight",
+    joinQualityExecutionStatusLabel: "Execution quality",
+    joinQualityJoinTypeLabel: "Join type",
+    joinQualityJoinKeyLabel: "Join key",
+    joinQualityMatchRateLabel: "Match rate",
+    joinQualityMatchedRowsLabel: "Matched rows",
+    joinQualityLeftUnmatchedLabel: "Left unmatched",
+    joinQualityRightUnmatchedLabel: "Right unmatched",
+    joinQualityRowMultiplierLabel: "Row expansion",
+    joinQualityFallbackLabel: "Fallback",
+    joinQualitySignalsLabel: "Quality signals",
+    joinQualityStatusPassLabel: "Pass",
+    joinQualityStatusWarnLabel: "Warn",
+    joinQualityStatusFailLabel: "Fail",
+    joinQualityStatusNotApplicableLabel: "N/A",
+    joinQualityExecutedLabel: "Executed",
+    joinQualityFallbackAppliedLabel: "Fallback applied",
     uploadError: "Upload failed",
     uploadInvalidFileError: "Only .xlsx, .xls, and .csv files are supported.",
     uploadTooLargeError: "This file is too large to upload. Try a smaller workbook.",
@@ -399,10 +439,17 @@ export const messages: Record<Locale, UiMessages> = {
         ],
       },
       {
-        label: "Boundary examples (not supported yet)",
+        label: "Join Beta examples (supported scope)",
         prompts: [
-          "Join Sales and Users by email and calculate conversion.",
-          "Union two sheets and show one combined ranking chart.",
+          "Join Orders and Users by email, then show top 5 regions by total amount.",
+          "Left join Sales and Targets by region, then rank regions by sales total.",
+        ],
+      },
+      {
+        label: "Join boundary examples (out of scope)",
+        prompts: [
+          "Join Orders, Users, and Campaigns together, then calculate ROI.",
+          "Join Sales and Users by email + region, then union with Leads.",
         ],
       },
     ],
@@ -412,9 +459,11 @@ export const messages: Record<Locale, UiMessages> = {
     brand: "Talk2Sheet",
     tagline: "一个支持 Excel / CSV 自然语言分析与轻量预测的独立开源全栈工作台。",
     capabilityTitle: "当前能力",
-    capabilityBody: "支持 workbook 内单 sheet 智能路由、单工作表分析、整表执行口径披露、明细返回、Top N、趋势图、轻量时间序列预测和结构化执行链路反馈。",
+    capabilityBody:
+      "支持 workbook 内单 sheet 智能路由、单工作表分析、顺序多 sheet 分析（先 A 后 B）、受控 Join Beta（两表、单键、inner/left、聚合问题）、Join 预检与质量回退、整表执行口径披露、明细返回、Top N、趋势图、轻量时间序列预测和结构化执行链路反馈。",
     outOfScopeTitle: "暂不包含",
-    outOfScopeBody: "当前已支持 workbook 内的单 sheet 选择与路由，但仍不支持跨 sheet 联合分析、跨工作表关联计算，以及高级统计、因果推断、复杂预测流程和私有基础设施依赖。",
+    outOfScopeBody:
+      "当前已支持 workbook 路由、顺序多 sheet 分析和受控 Join Beta，但任意跨 sheet 联合分析仍超出范围：多键 join、多跳 join、三表及以上 join、union 拼接，以及高级统计、因果推断、复杂预测流程和私有基础设施依赖。",
     languageLabel: "语言",
     uploadTitle: "上传工作簿",
     uploadHint: "上传 .xlsx、.xls 或 .csv 文件，然后围绕 workbook 中的单个工作表发起对话。",
@@ -431,14 +480,16 @@ export const messages: Record<Locale, UiMessages> = {
     previewEmpty: "请选择文件和工作表查看预览。",
     chatTitle: "对话分析",
     chatHint: "后端会通过 SSE 流式返回规划元数据与最终答案，便于查看执行口径与回答生成过程。",
-    chatEmpty: "建议先问单 sheet 问题，再按“先 A 后 B”顺序分析。当前仍不支持跨 sheet join。",
+    chatEmpty: "建议先问单 sheet，或按“先 A 后 B”顺序分析；也可尝试 Join Beta（两表、单键、inner/left、聚合问题）。",
     examplesButtonLabel: "示例",
     guideButtonLabel: "说明",
     quickStartTitle: "先跑一个引导问题",
-    quickStartBody: "文件已经加载完成。先围绕当前工作表发起一个问题，可以快速看到结果卡片、执行口径和分析链路。",
+    quickStartBody:
+      "文件已经加载完成。可先围绕当前工作表提问，也可尝试 Join Beta 类型问题（两张表按一个 key 做 inner/left，并输出 sum/count/avg/top/trend）。",
     quickStartPrimary: "先问第一个问题",
     quickStartSecondary: "或者换一个示例问题",
-    questionPlaceholder: "一次只围绕一个工作表提问，例如：把当前工作表的月度营收趋势画成折线图，或者预测下个月总费用。",
+    questionPlaceholder:
+      "一次只围绕一个工作表提问；如果跨表，请使用 Join Beta 范围（两表、单键、inner/left、聚合问题），例如：按 email 连接 Orders 和 Users，按地区汇总总金额前 5。",
     modeLabel: "模式",
     modeAutoLabel: "自动",
     modeTextLabel: "文本",
@@ -486,8 +537,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodRequestedLabel: "按请求 sheet 兜底",
     routingBoundarySingleSheetLabel: "单 sheet 范围内",
     routingBoundaryDetectedLabel: "已识别为多 sheet 问题（仅支持顺序分析）",
-    routingBoundaryOutOfScopeLabel: "涉及跨 sheet 联合分析（当前不支持）",
-    routingBoundaryOutOfScopeHint: "当前版本仅支持 workbook 路由与顺序式单 sheet 分析，暂不支持跨 sheet join 或 union。",
+    routingBoundaryOutOfScopeLabel: "跨 sheet 请求超出 Join Beta 范围",
+    routingBoundaryOutOfScopeHint:
+      "当前版本支持 workbook 路由、顺序式单 sheet 分析，以及受控 Join Beta（两表、单键、inner/left、聚合问题）。多键 join、多跳 join、三表及以上 join、union 仍不支持。",
     filterSummaryLabel: "筛选条件",
     topKSummaryLabel: "Top K 口径",
     trendGrainLabel: "趋势粒度",
@@ -578,6 +630,24 @@ export const messages: Record<Locale, UiMessages> = {
     stepComparisonPreviousLabel: "上一步",
     stepComparisonCurrentLabel: "当前步骤",
     stepComparisonIndependentHint: "两个步骤分别在各自 sheet 独立计算，不代表跨 sheet join 结果。",
+    joinQualityLabel: "Join 质量",
+    joinQualityPreflightStatusLabel: "预检",
+    joinQualityExecutionStatusLabel: "执行质量",
+    joinQualityJoinTypeLabel: "Join 类型",
+    joinQualityJoinKeyLabel: "Join 键",
+    joinQualityMatchRateLabel: "匹配率",
+    joinQualityMatchedRowsLabel: "匹配行",
+    joinQualityLeftUnmatchedLabel: "左表未匹配",
+    joinQualityRightUnmatchedLabel: "右表未匹配",
+    joinQualityRowMultiplierLabel: "行膨胀倍数",
+    joinQualityFallbackLabel: "回退说明",
+    joinQualitySignalsLabel: "质量信号",
+    joinQualityStatusPassLabel: "通过",
+    joinQualityStatusWarnLabel: "告警",
+    joinQualityStatusFailLabel: "失败",
+    joinQualityStatusNotApplicableLabel: "不适用",
+    joinQualityExecutedLabel: "已执行",
+    joinQualityFallbackAppliedLabel: "已触发回退",
     uploadError: "上传失败",
     uploadInvalidFileError: "仅支持上传 .xlsx、.xls 和 .csv 文件。",
     uploadTooLargeError: "当前文件过大，暂时无法上传，请换一个更小的工作簿。",
@@ -609,10 +679,17 @@ export const messages: Record<Locale, UiMessages> = {
         ],
       },
       {
-        label: "边界问题（当前不支持）",
+        label: "Join Beta 示例（当前可支持）",
         prompts: [
-          "把 Sales 和 Users 按邮箱 join 后计算转化率。",
-          "把两个 sheet union 后输出一个合并排行图。",
+          "按 email 连接 Orders 和 Users，按地区汇总总金额前 5。",
+          "将 Sales 与 Targets 按 region 做 left join，比较各地区销售总额。",
+        ],
+      },
+      {
+        label: "Join 边界示例（当前不支持）",
+        prompts: [
+          "把 Orders、Users、Campaigns 三张表一起 join 后算 ROI。",
+          "把 Sales 和 Users 按 email+region 多键 join，再和 Leads 做 union。",
         ],
       },
     ],
@@ -622,9 +699,11 @@ export const messages: Record<Locale, UiMessages> = {
     brand: "Talk2Sheet",
     tagline: "Excel / CSV を自然言語で分析し、軽量な予測も行える独立したオープンソースのフルスタック実装です。",
     capabilityTitle: "現在の機能",
-    capabilityBody: "ワークブック内の単一シートルーティング、単一シート分析、シート全体の実行範囲表示、詳細行、Top N、トレンドチャート、軽量な時系列予測、構造化パイプライン返却に対応しています。",
+    capabilityBody:
+      "ワークブック内の単一シートルーティング、単一シート分析、順次マルチシート分析（A→B）、制御付き Join Beta（2 シート・単一キー・inner/left・集計系）、Join プリフライトと品質フォールバック、シート全体の実行範囲表示、詳細行、Top N、トレンドチャート、軽量な時系列予測、構造化パイプライン返却に対応しています。",
     outOfScopeTitle: "MVP 対象外",
-    outOfScopeBody: "ワークブック内の単一シート選択とルーティングには対応していますが、複数シートをまたぐ結合や複合分析、高度な統計、因果推論、複雑な予測ワークフロー、非公開インフラ連携はまだ対象外です。",
+    outOfScopeBody:
+      "ワークブックルーティング、順次マルチシート分析、制御付き Join Beta には対応しています。まだ対象外: 任意の join/union（複数キー、多段 join、3 シート以上、SQL 風の合成）、高度な統計、因果推論、複雑な予測ワークフロー、非公開インフラ連携。",
     languageLabel: "言語",
     uploadTitle: "ワークブックをアップロード",
     uploadHint: ".xlsx、.xls、.csv をアップロードし、ワークブック内の 1 シート単位で対話分析を開始します。",
@@ -642,14 +721,16 @@ export const messages: Record<Locale, UiMessages> = {
     chatTitle: "対話分析",
     chatHint: "バックエンドは SSE でプランナー情報と最終回答を逐次返し、実行範囲と回答生成の流れを確認できます。",
     chatEmpty:
-      "まずは単一シートの質問から始め、次にワークブック内で A→B の順次分析へ進んでください。シート横断 join はまだ未対応です。",
+      "まずは単一シートの質問から始め、A→B の順次分析へ進むか、Join Beta（2 シート・単一キー・inner/left・集計系）を試してください。",
     examplesButtonLabel: "サンプル",
     guideButtonLabel: "説明",
     quickStartTitle: "まずはガイド付きの質問から",
-    quickStartBody: "ファイルは読み込み済みです。まず現在のシートについて 1 つ質問すると、結果カード、実行範囲、パイプラインの動きが確認できます。",
+    quickStartBody:
+      "ファイルは読み込み済みです。まず現在シートの質問を 1 つ試すか、2 シートを 1 キーで結合して集計する Join Beta 形式の質問を試してください。",
     quickStartPrimary: "最初の質問を実行",
     quickStartSecondary: "別のサンプル質問を使う",
-    questionPlaceholder: "1 回につき 1 シートについて質問してください。例: 現在のシートの月次売上トレンドを折れ線グラフで表示して、または来月の合計費用を予測して。",
+    questionPlaceholder:
+      "1 回につき 1 シートの質問、または Join Beta 範囲（2 シート・単一キー・inner/left・集計系）で質問してください。例: Orders と Users を email で join して地域別合計 Top 5 を表示。",
     modeLabel: "モード",
     modeAutoLabel: "自動",
     modeTextLabel: "テキスト",
@@ -697,9 +778,9 @@ export const messages: Record<Locale, UiMessages> = {
     routingMethodRequestedLabel: "要求シートへのフォールバック",
     routingBoundarySingleSheetLabel: "単一シート範囲内",
     routingBoundaryDetectedLabel: "複数シート意図を検出（順次分析のみ対応）",
-    routingBoundaryOutOfScopeLabel: "シート横断 join は対象外",
+    routingBoundaryOutOfScopeLabel: "クロスシート要求が Join Beta 範囲外",
     routingBoundaryOutOfScopeHint:
-      "現バージョンはワークブック内ルーティングと順次単一シート分析まで対応します。シート横断 join/union にはまだ対応していません。",
+      "現バージョンはワークブック内ルーティング、順次単一シート分析、制御付き Join Beta（2 シート・単一キー・inner/left・集計系）まで対応します。複数キー join、多段 join、3 シート以上の join、union は未対応です。",
     filterSummaryLabel: "適用フィルター",
     topKSummaryLabel: "Top K 条件",
     trendGrainLabel: "トレンド粒度",
@@ -790,6 +871,24 @@ export const messages: Record<Locale, UiMessages> = {
     stepComparisonPreviousLabel: "前のステップ",
     stepComparisonCurrentLabel: "現在のステップ",
     stepComparisonIndependentHint: "各ステップはシートごとに独立計算されています。クロスシート join 結果ではありません。",
+    joinQualityLabel: "Join 品質",
+    joinQualityPreflightStatusLabel: "プリフライト",
+    joinQualityExecutionStatusLabel: "実行品質",
+    joinQualityJoinTypeLabel: "Join 種別",
+    joinQualityJoinKeyLabel: "Join キー",
+    joinQualityMatchRateLabel: "一致率",
+    joinQualityMatchedRowsLabel: "一致行",
+    joinQualityLeftUnmatchedLabel: "左未一致",
+    joinQualityRightUnmatchedLabel: "右未一致",
+    joinQualityRowMultiplierLabel: "行増幅",
+    joinQualityFallbackLabel: "フォールバック",
+    joinQualitySignalsLabel: "品質シグナル",
+    joinQualityStatusPassLabel: "正常",
+    joinQualityStatusWarnLabel: "警告",
+    joinQualityStatusFailLabel: "失敗",
+    joinQualityStatusNotApplicableLabel: "N/A",
+    joinQualityExecutedLabel: "実行済み",
+    joinQualityFallbackAppliedLabel: "フォールバック適用",
     uploadError: "アップロード失敗",
     uploadInvalidFileError: ".xlsx、.xls、.csv ファイルのみアップロードできます。",
     uploadTooLargeError: "このファイルは大きすぎてアップロードできません。より小さいワークブックを試してください。",
@@ -821,10 +920,17 @@ export const messages: Record<Locale, UiMessages> = {
         ],
       },
       {
-        label: "境界例（未対応）",
+        label: "Join Beta サンプル（対応範囲）",
         prompts: [
-          "Sales と Users をメールで join して転換率を計算。",
-          "2 つのシートを union して 1 つのランキングチャートを作成。",
+          "Orders と Users を email で join し、地域別の合計金額 Top 5 を表示。",
+          "Sales と Targets を region で left join し、地域別売上合計を順位付け。",
+        ],
+      },
+      {
+        label: "Join 境界例（未対応）",
+        prompts: [
+          "Orders・Users・Campaigns の 3 シートを join して ROI を算出。",
+          "Sales と Users を email+region の複数キーで join し、Leads と union する。",
         ],
       },
     ],

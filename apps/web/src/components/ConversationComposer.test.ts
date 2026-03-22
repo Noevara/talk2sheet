@@ -51,7 +51,8 @@ describe("ConversationComposer", () => {
 
     expect(wrapper.text()).toContain("Single-sheet analysis");
     expect(wrapper.text()).toContain("Sequential multi-sheet (A then B)");
-    expect(wrapper.text()).toContain("Boundary examples (not supported yet)");
+    expect(wrapper.text()).toContain("Join Beta examples (supported scope)");
+    expect(wrapper.text()).toContain("Join boundary examples (out of scope)");
 
     const promptButton = wrapper
       .findAll("button.helper-example-chip")

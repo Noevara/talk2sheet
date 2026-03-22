@@ -10,6 +10,7 @@ from .loader_common import (
     SOURCE_SHEET_INDEX_ATTR,
     SUPPORTED_SPREADSHEET_SUFFIXES,
 )
+from .join_preflight import run_join_preflight
 from .row_count_cache import count_sheet_rows
 from .sheet_metadata import read_sheet_descriptors
 from .workbook_context import read_workbook_context
@@ -27,4 +28,5 @@ __all__ = [
     "preview_sheet",
     "read_sheet_descriptors",
     "read_workbook_context",
+    "run_join_preflight",
 ]

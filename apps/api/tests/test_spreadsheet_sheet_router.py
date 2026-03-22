@@ -283,7 +283,7 @@ def test_sheet_router_marks_boundary_out_of_scope_for_cross_sheet_join() -> None
     assert len(decision.clarification.options) == 2
     assert decision.boundary_status == "multi_sheet_out_of_scope"
     assert decision.boundary_reason == "cross_sheet_join_not_supported"
-    assert "join is not supported yet" in decision.clarification.reason
+    assert "exceeds the controlled Join Beta scope" in decision.clarification.reason
     assert [item["sheet_name"] for item in decision.mentioned_sheets] == ["Sales", "Users"]
 
 
@@ -299,5 +299,5 @@ def test_sheet_router_multi_sheet_clarification_reason_localized_for_zh() -> Non
 
     assert decision.status == "clarification"
     assert decision.clarification is not None
-    assert "当前不支持跨 sheet 联合分析" in decision.clarification.reason
+    assert "超出当前受控 Join Beta 范围" in decision.clarification.reason
     assert "建议拆解" in decision.decomposition_hint

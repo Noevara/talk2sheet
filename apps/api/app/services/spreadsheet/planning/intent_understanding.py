@@ -5,6 +5,7 @@ from typing import Any
 
 from ..core.schema import Clarification
 from ..pipeline.column_profile import normalize_text
+from .join_beta_signals import evaluate_join_beta_request
 from .intent_models import AnalysisIntent, AnalysisTimeScope
 from .planner_intent_signals import (
     _average_amount_question,
@@ -369,6 +370,7 @@ def understand_analysis_intent(
     followup_context: dict[str, Any] | None = None,
     draft: Any | None = None,
 ) -> AnalysisIntent:
+    join_eval = evaluate_join_beta_request(question)
     clarification = _build_intent_clarification(
         question=question,
         profiles=profiles,
@@ -387,4 +389,9 @@ def understand_analysis_intent(
         time_scope=_infer_time_scope(question=question, followup_context=followup_context, draft=draft),
         answer_expectation=_infer_answer_expectation(kind=kind, mode=mode, draft=draft, clarification=clarification),
         clarification=clarification,
+        join_requested=bool(join_eval.get("is_join_request")),
+        join_key=str(join_eval.get("join_key") or "").strip() or None,
+        join_type=str(join_eval.get("join_type") or "").strip() or None,
+        join_beta_eligible=bool(join_eval.get("eligible")) if bool(join_eval.get("is_join_request")) else None,
+        join_gate_reasons=[str(item) for item in list(join_eval.get("reasons") or []) if str(item).strip()],
     )

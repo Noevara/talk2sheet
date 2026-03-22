@@ -4,7 +4,7 @@ Talk2Sheet is an open-source full-stack framework for conversational analytics o
 
 It lets users ask natural-language questions about spreadsheet data, resolves the right sheet inside a workbook, translates the question into an executable analysis plan, runs the analysis with pandas, and returns both the answer and the visible execution pipeline.
 
-Latest stable release: `v0.3.1`.
+Latest stable release: `v0.3.3`.
 
 ## Current Scope
 
@@ -24,6 +24,7 @@ Supported now:
 - file upload, sheet list, and preview
 - workbook-aware routing to one target sheet
 - sequential workbook analysis across sheets (analyze A first, then continue on B in follow-up turns)
+- controlled Join Beta for cross-sheet requests (two-sheet, single-key, `inner`/`left`, aggregate-only)
 - task steps card with per-step status (pending / in progress / completed / failed)
 - one-click "continue to next step" to jump to the next sheet with the same scope
 - analysis anchor carry-over to keep metric / dimension / time scope stable across follow-up turns
@@ -48,7 +49,8 @@ Supported now:
 
 Not supported yet:
 
-- cross-sheet joins or combined multi-sheet analysis in one step
+- arbitrary cross-sheet joins/unions in one step
+- multi-key joins, multi-hop joins, and joins across 3+ sheets
 - advanced statistics
 - causal inference
 - production object storage and persistent session backends
@@ -70,7 +72,7 @@ packages/contracts/  generated OpenAPI artifacts
 - Japanese: [README.ja.md](./README.ja.md)
 - Architecture overview: [docs/architecture.en.md](./docs/architecture.en.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
-- Latest release notes: [docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
+- Latest release notes: [docs/releases/v0.3.3.md](./docs/releases/v0.3.3.md)
 
 ## How It Works
 

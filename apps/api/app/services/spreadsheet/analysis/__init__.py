@@ -75,13 +75,23 @@ def analyze(
             execution_disclosure=build_execution_disclosure(locale, rows_loaded=rows_loaded, exact_used=False, fallback_reason=message),
         )
 
-    unsupported = detect_unsupported_request(chat_text, locale=locale)
+    unsupported = detect_unsupported_request(
+        chat_text,
+        locale=locale,
+        followup_context=followup_context,
+    )
     if unsupported is not None:
         message = str(unsupported["message"])
+        blocked_pipeline = fallback_pipeline(df, reason=message, code="unsupported_capability")
+        blocked_pipeline["unsupported_reason_codes"] = [
+            str(item) for item in list(unsupported.get("reason_codes") or []) if str(item).strip()
+        ]
+        if isinstance(unsupported.get("join_guard"), dict):
+            blocked_pipeline["join_guard"] = dict(unsupported["join_guard"])
         return AnalysisPayload(
             mode="text",
             answer=message,
-            pipeline=finalize_pipeline(fallback_pipeline(df, reason=message, code="unsupported_capability")),
+            pipeline=finalize_pipeline(blocked_pipeline),
             execution_disclosure=build_execution_disclosure(locale, rows_loaded=rows_loaded, exact_used=False, fallback_reason=message),
         )
 

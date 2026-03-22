@@ -76,6 +76,38 @@ jobs:
         if: steps.intent_eval.outcome == 'failure'
         run: exit 1
 
+  join-beta-regression:
+    name: Join Beta Regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install API dependencies
+        run: pip install -e "apps/api[dev]"
+
+      - name: Run join beta regression eval
+        id: join_beta_eval
+        continue-on-error: true
+        run: python apps/api/scripts/eval_join_beta_cases.py
+
+      - name: Upload join beta failure snapshot
+        if: steps.join_beta_eval.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: join-beta-regression-failure-snapshot
+          path: apps/api/.artifacts/join_beta_failure_snapshot.json
+          if-no-files-found: ignore
+
+      - name: Fail job on join beta regression mismatch
+        if: steps.join_beta_eval.outcome == 'failure'
+        run: exit 1
+
   batch-perf-baseline:
     name: Batch Perf Baseline
     runs-on: ubuntu-latest

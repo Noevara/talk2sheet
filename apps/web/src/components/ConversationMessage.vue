@@ -117,6 +117,41 @@ function normalizeBatchStatus(status: string): "success" | "failed" {
   return status.trim().toLowerCase() === "failed" ? "failed" : "success";
 }
 
+function formatRatio(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  const normalized = Math.max(0, Math.min(1, value));
+  return `${(normalized * 100).toFixed(1)}%`;
+}
+
+function normalizeJoinQualityStatus(status: string): "pass" | "warn" | "fail" | "not_applicable" {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "pass") {
+    return "pass";
+  }
+  if (normalized === "warn") {
+    return "warn";
+  }
+  if (normalized === "fail") {
+    return "fail";
+  }
+  return "not_applicable";
+}
+
+function formatJoinQualityStatusLabel(status: "pass" | "warn" | "fail" | "not_applicable"): string {
+  if (status === "pass") {
+    return props.ui.joinQualityStatusPassLabel;
+  }
+  if (status === "warn") {
+    return props.ui.joinQualityStatusWarnLabel;
+  }
+  if (status === "fail") {
+    return props.ui.joinQualityStatusFailLabel;
+  }
+  return props.ui.joinQualityStatusNotApplicableLabel;
+}
+
 function formatBatchStatusLabel(status: "success" | "failed"): string {
   return status === "failed" ? props.ui.batchStatusFailedLabel : props.ui.batchStatusSuccessLabel;
 }
@@ -688,6 +723,65 @@ const sheetRoutingMeta = computed(() => {
   };
 });
 
+const joinQualityMeta = computed(() => {
+  if (props.message.role !== "assistant") {
+    return null;
+  }
+  const pipeline = asRecord(props.message.pipeline);
+  if (!pipeline) {
+    return null;
+  }
+  const joinPreflight = asRecord(pipeline.join_preflight);
+  const joinBeta = asRecord(pipeline.join_beta);
+  if (!joinPreflight && !joinBeta) {
+    return null;
+  }
+
+  const quality = asRecord(joinBeta?.quality);
+  const preflightStatus = normalizeJoinQualityStatus(readString(joinPreflight?.status));
+  const executionStatus = normalizeJoinQualityStatus(
+    readString(joinBeta?.quality_status) || readString(quality?.status),
+  );
+  const joinType = readString(joinBeta?.join_type) || readString(joinPreflight?.join_type) || "—";
+  const joinKey = readString(joinBeta?.join_key) || readString(joinPreflight?.join_key) || "—";
+  const matchedRows = readNumber(joinBeta?.matched_rows);
+  const leftUnmatchedRows = readNumber(joinBeta?.left_unmatched_rows);
+  const rightUnmatchedRows = readNumber(joinBeta?.right_unmatched_rows);
+  const matchRate = readNumber(quality?.match_rate) ?? readNumber(joinBeta?.match_rate) ?? readNumber(joinPreflight?.estimated_match_rate);
+  const rowMultiplier = readNumber(quality?.row_multiplier);
+  const fallbackApplied = joinBeta?.fallback_applied === true || readNumber(joinBeta?.fallback_applied) === 1;
+  const fallbackReason = readString(joinBeta?.fallback_reason) || readString(quality?.fallback_reason);
+  const executed = joinBeta?.executed === true;
+  const preflightChecks = Array.isArray(joinPreflight?.checks) ? (joinPreflight?.checks as unknown[]) : [];
+  const preflightCheckCount = preflightChecks.length;
+
+  const signalMessages = Array.isArray(quality?.signals)
+    ? (quality?.signals as unknown[])
+        .map((item) => asRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+        .map((item) => readString(item.message))
+        .filter((item) => item)
+    : [];
+
+  return {
+    preflightStatusLabel: formatJoinQualityStatusLabel(preflightStatus),
+    preflightStatusDetail: `${formatJoinQualityStatusLabel(preflightStatus)} (${preflightCheckCount})`,
+    executionStatusLabel: formatJoinQualityStatusLabel(executionStatus),
+    joinType,
+    joinKey,
+    matchRateLabel: formatRatio(matchRate),
+    matchedRowsLabel: matchedRows !== null ? matchedRows.toLocaleString() : "—",
+    leftUnmatchedLabel: leftUnmatchedRows !== null ? leftUnmatchedRows.toLocaleString() : "—",
+    rightUnmatchedLabel: rightUnmatchedRows !== null ? rightUnmatchedRows.toLocaleString() : "—",
+    rowMultiplierLabel: rowMultiplier !== null ? `x${rowMultiplier.toFixed(2)}` : "—",
+    fallbackApplied,
+    fallbackReason,
+    executed,
+    preflightCheckCount,
+    signalMessages,
+  };
+});
+
 const sourceSheetMeta = computed(() => {
   if (props.message.role !== "assistant") {
     return null;
@@ -1217,6 +1311,64 @@ async function handleExportChart(): Promise<void> {
       <div v-if="sheetRoutingMeta.decompositionHint" class="routing-note">{{ sheetRoutingMeta.decompositionHint }}</div>
     </div>
 
+    <div v-if="joinQualityMeta" class="message-join-quality">
+      <div class="section-label">{{ ui.joinQualityLabel }}</div>
+      <div class="join-quality-grid">
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityPreflightStatusLabel }}</span>
+          <strong>{{ joinQualityMeta.preflightStatusDetail }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityExecutionStatusLabel }}</span>
+          <strong>{{ joinQualityMeta.executionStatusLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityJoinTypeLabel }}</span>
+          <strong>{{ joinQualityMeta.joinType }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityJoinKeyLabel }}</span>
+          <strong>{{ joinQualityMeta.joinKey }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityMatchRateLabel }}</span>
+          <strong>{{ joinQualityMeta.matchRateLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityMatchedRowsLabel }}</span>
+          <strong>{{ joinQualityMeta.matchedRowsLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityLeftUnmatchedLabel }}</span>
+          <strong>{{ joinQualityMeta.leftUnmatchedLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityRightUnmatchedLabel }}</span>
+          <strong>{{ joinQualityMeta.rightUnmatchedLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityRowMultiplierLabel }}</span>
+          <strong>{{ joinQualityMeta.rowMultiplierLabel }}</strong>
+        </div>
+        <div class="join-quality-item">
+          <span>{{ ui.joinQualityExecutedLabel }}</span>
+          <strong>{{ joinQualityMeta.executed ? ui.batchStatusSuccessLabel : ui.joinQualityStatusNotApplicableLabel }}</strong>
+        </div>
+      </div>
+      <div v-if="joinQualityMeta.fallbackApplied" class="routing-note join-quality-fallback">
+        {{ ui.joinQualityFallbackAppliedLabel }}
+      </div>
+      <div v-if="joinQualityMeta.fallbackReason" class="routing-note join-quality-fallback">
+        {{ ui.joinQualityFallbackLabel }}: {{ joinQualityMeta.fallbackReason }}
+      </div>
+      <div v-if="joinQualityMeta.signalMessages.length" class="join-quality-signals">
+        <div class="join-quality-signals-label">{{ ui.joinQualitySignalsLabel }}</div>
+        <ul>
+          <li v-for="signal in joinQualityMeta.signalMessages" :key="signal">{{ signal }}</li>
+        </ul>
+      </div>
+    </div>
+
     <div v-if="message.role === 'assistant' && analysisSummaryMeta" class="message-analysis-summary">
       <div class="summary-grid">
         <div v-if="analysisSummaryMeta.filtersText" class="summary-item">
@@ -1707,6 +1859,7 @@ async function handleExportChart(): Promise<void> {
 
 .message-scope,
 .message-routing,
+.message-join-quality,
 .message-analysis-summary,
 .message-batch-progress,
 .message-batch-summary,
@@ -1825,6 +1978,61 @@ async function handleExportChart(): Promise<void> {
   padding: 0.82rem 0.9rem;
   border: 1px solid rgba(29, 95, 133, 0.14);
   background: rgba(29, 95, 133, 0.06);
+}
+
+.message-join-quality {
+  border-radius: 18px;
+  padding: 0.82rem 0.9rem;
+  border: 1px solid rgba(200, 92, 60, 0.2);
+  background: rgba(200, 92, 60, 0.08);
+}
+
+.join-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.68rem;
+}
+
+.join-quality-item {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.join-quality-item span {
+  font-size: 0.74rem;
+  color: rgba(23, 50, 84, 0.62);
+}
+
+.join-quality-item strong {
+  color: #173254;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.join-quality-fallback {
+  color: #8e3e28;
+}
+
+.join-quality-signals {
+  margin-top: 0.5rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(18, 41, 74, 0.08);
+  padding: 0.5rem 0.6rem;
+}
+
+.join-quality-signals-label {
+  font-size: 0.74rem;
+  color: rgba(23, 50, 84, 0.62);
+  margin-bottom: 0.3rem;
+}
+
+.join-quality-signals ul {
+  margin: 0;
+  padding-left: 1rem;
+  color: #173254;
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .routing-grid {
@@ -2002,6 +2210,10 @@ async function handleExportChart(): Promise<void> {
   }
 
   .routing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .join-quality-grid {
     grid-template-columns: 1fr;
   }
 }

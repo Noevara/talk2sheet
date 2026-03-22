@@ -12,12 +12,13 @@ from typing import AsyncGenerator
 
 from app.observability import log_event, log_task_step_event, new_request_id
 from app.config import get_settings
-from app.schemas import SpreadsheetBatchResponse, SpreadsheetBatchResult, SpreadsheetBatchSummary
+from app.schemas import JoinPreflightResult, SpreadsheetBatchResponse, SpreadsheetBatchResult, SpreadsheetBatchSummary
 from .core.i18n import t
 from .analysis import analyze
 from .analysis.utils import build_execution_disclosure
 from .conversation.conversation_memory import build_turn_summary, conversation_store
-from .pipeline import HEADER_HEALTH_ATTR, HEADER_PLAN_ATTR, load_dataframe, load_full_dataframe, read_workbook_context
+from .execution.join_executor import execute_join_beta
+from .pipeline import HEADER_HEALTH_ATTR, HEADER_PLAN_ATTR, load_dataframe, load_full_dataframe, read_workbook_context, run_join_preflight
 from .routing.sheet_router import route_sheet
 
 
@@ -28,6 +29,12 @@ _MULTI_SHEET_FAILURE_REASON_LIMIT = 5
 _FOLLOWUP_ACTION_CONTINUE_NEXT_STEP = "continue_next_step"
 _BATCH_MAX_SHEETS = 10
 _BATCH_MAX_PARALLEL_HARD_LIMIT = 3
+_JOIN_BETA_WARN_MATCH_RATE = 0.45
+_JOIN_BETA_FAIL_MATCH_RATE = 0.25
+_JOIN_BETA_WARN_UNMATCHED_RATE = 0.7
+_JOIN_BETA_FAIL_UNMATCHED_RATE = 0.9
+_JOIN_BETA_WARN_ROW_MULTIPLIER = 4.0
+_JOIN_BETA_FAIL_ROW_MULTIPLIER = 8.0
 
 
 def _sse(payload: dict) -> str:
@@ -1133,6 +1140,144 @@ def _build_sheet_routing_observability(
     }
 
 
+def _join_quality_text(locale: str, *, en: str, zh: str, ja: str) -> str:
+    normalized = str(locale or "").lower()
+    if normalized.startswith("zh"):
+        return zh
+    if normalized.startswith("ja"):
+        return ja
+    return en
+
+
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    if denominator <= 0:
+        return 0.0
+    return float(numerator) / float(denominator)
+
+
+def _evaluate_join_beta_quality(*, join_beta_meta: dict[str, object], locale: str) -> dict[str, object]:
+    left_rows = float(join_beta_meta.get("left_rows") or 0)
+    right_rows = float(join_beta_meta.get("right_rows") or 0)
+    joined_rows = float(join_beta_meta.get("joined_rows") or 0)
+    matched_rows = float(join_beta_meta.get("matched_rows") or 0)
+    left_unmatched_rows = float(join_beta_meta.get("left_unmatched_rows") or 0)
+    right_unmatched_rows = float(join_beta_meta.get("right_unmatched_rows") or 0)
+    match_rate = float(join_beta_meta.get("match_rate") or 0.0)
+    left_unmatched_rate = _safe_ratio(left_unmatched_rows, left_rows)
+    right_unmatched_rate = _safe_ratio(right_unmatched_rows, right_rows)
+    row_multiplier = _safe_ratio(joined_rows, max(left_rows, 1.0))
+
+    signals: list[dict[str, object]] = []
+    status = "pass"
+
+    def add_signal(code: str, level: str, *, en: str, zh: str, ja: str) -> None:
+        nonlocal status
+        message = _join_quality_text(locale, en=en, zh=zh, ja=ja)
+        signals.append({"code": code, "level": level, "message": message})
+        if level == "fail":
+            status = "fail"
+        elif level == "warn" and status != "fail":
+            status = "warn"
+
+    if match_rate < _JOIN_BETA_FAIL_MATCH_RATE:
+        add_signal(
+            "join_match_rate_too_low",
+            "fail",
+            en=f"Estimated match rate is too low ({match_rate:.2%}).",
+            zh=f"Join 匹配率过低（{match_rate:.2%}）。",
+            ja=f"Join 一致率が低すぎます（{match_rate:.2%}）。",
+        )
+    elif match_rate < _JOIN_BETA_WARN_MATCH_RATE:
+        add_signal(
+            "join_match_rate_risky",
+            "warn",
+            en=f"Estimated match rate is moderate ({match_rate:.2%}).",
+            zh=f"Join 匹配率一般（{match_rate:.2%}），存在质量风险。",
+            ja=f"Join 一致率が中程度（{match_rate:.2%}）で品質リスクがあります。",
+        )
+
+    worst_unmatched_rate = max(left_unmatched_rate, right_unmatched_rate)
+    if worst_unmatched_rate >= _JOIN_BETA_FAIL_UNMATCHED_RATE:
+        add_signal(
+            "join_unmatched_too_high",
+            "fail",
+            en=f"Unmatched rate is too high ({worst_unmatched_rate:.2%}).",
+            zh=f"未匹配率过高（{worst_unmatched_rate:.2%}）。",
+            ja=f"未一致率が高すぎます（{worst_unmatched_rate:.2%}）。",
+        )
+    elif worst_unmatched_rate >= _JOIN_BETA_WARN_UNMATCHED_RATE:
+        add_signal(
+            "join_unmatched_high",
+            "warn",
+            en=f"Unmatched rate is elevated ({worst_unmatched_rate:.2%}).",
+            zh=f"未匹配率偏高（{worst_unmatched_rate:.2%}）。",
+            ja=f"未一致率が高めです（{worst_unmatched_rate:.2%}）。",
+        )
+
+    if row_multiplier >= _JOIN_BETA_FAIL_ROW_MULTIPLIER:
+        add_signal(
+            "join_row_explosion",
+            "fail",
+            en=f"Join row expansion is too large (x{row_multiplier:.2f}).",
+            zh=f"Join 行膨胀过大（x{row_multiplier:.2f}）。",
+            ja=f"Join 行増幅が大きすぎます（x{row_multiplier:.2f}）。",
+        )
+    elif row_multiplier >= _JOIN_BETA_WARN_ROW_MULTIPLIER:
+        add_signal(
+            "join_row_expansion_high",
+            "warn",
+            en=f"Join row expansion is high (x{row_multiplier:.2f}).",
+            zh=f"Join 行膨胀较高（x{row_multiplier:.2f}）。",
+            ja=f"Join 行増幅が高めです（x{row_multiplier:.2f}）。",
+        )
+
+    if not signals:
+        signals.append(
+            {
+                "code": "join_quality_ok",
+                "level": "pass",
+                "message": _join_quality_text(
+                    locale,
+                    en="Join quality looks healthy.",
+                    zh="Join 质量评估正常。",
+                    ja="Join 品質評価は良好です。",
+                ),
+            }
+        )
+
+    fallback_reason = ""
+    if status == "fail":
+        fallback_reason = _join_quality_text(
+            locale,
+            en="Join quality does not meet the beta threshold. Falling back to sequential sheet analysis.",
+            zh="Join 质量未达到 Beta 阈值，已自动回退为顺序式多 Sheet 分析。",
+            ja="Join 品質が Beta 閾値を満たさないため、順次シート分析へ自動フォールバックします。",
+        )
+
+    return {
+        "status": status,
+        "signals": signals,
+        "fallback_recommended": int(status == "fail"),
+        "fallback_reason": fallback_reason,
+        "match_rate": round(match_rate, 4),
+        "left_unmatched_rate": round(left_unmatched_rate, 4),
+        "right_unmatched_rate": round(right_unmatched_rate, 4),
+        "row_multiplier": round(row_multiplier, 4),
+    }
+
+
+def _join_beta_fallback_message(
+    *,
+    locale: str,
+    fallback_reason: str,
+    decomposition_hint: str,
+) -> str:
+    tail = decomposition_hint.strip()
+    if tail:
+        return f"{fallback_reason}\n{tail}"
+    return fallback_reason
+
+
 async def stream_spreadsheet_chat(
     *,
     path: Path,
@@ -1196,6 +1341,27 @@ async def stream_spreadsheet_chat(
             followup_context=routing_followup_context,
             locale=locale,
         )
+        join_preflight: JoinPreflightResult | None = None
+        if str(routing_decision.boundary_reason or "") == "cross_sheet_join_not_supported":
+            try:
+                join_preflight = run_join_preflight(
+                    path=path,
+                    workbook_context=workbook_context,
+                    routing_decision=routing_decision,
+                    question=chat_text,
+                    locale=locale,
+                    sample_limit=min(2000, int(settings.max_analysis_rows)),
+                )
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "spreadsheet_join_preflight_failed",
+                    request_id=request_id,
+                    file_id=file_id,
+                    conversation_id=active_conversation_id,
+                    error_type=type(exc).__name__,
+                )
+        join_preflight_payload = join_preflight.model_dump() if join_preflight is not None else None
         resolved_sheet_index = int(routing_decision.resolved_sheet_index or workbook_context.active_sheet_index or sheet_index or 1)
         resolved_sheet_name = str(routing_decision.resolved_sheet_name or workbook_context.active_sheet_name or "")
         sheet_sequence = _build_sheet_sequence_payload(
@@ -1280,8 +1446,316 @@ async def stream_spreadsheet_chat(
         session.sheet_index = resolved_sheet_index
         session.sheet_name = resolved_sheet_name
 
+        should_execute_join_beta = (
+            bool(getattr(settings, "join_beta_enabled", False))
+            and routing_decision.status == "clarification"
+            and str(routing_decision.boundary_reason or "") == "cross_sheet_join_not_supported"
+            and isinstance(join_preflight_payload, dict)
+            and str(join_preflight_payload.get("status") or "") in {"pass", "warn"}
+            and bool(join_preflight_payload.get("is_join_request"))
+        )
+        if should_execute_join_beta:
+            try:
+                effective_preflight = join_preflight if isinstance(join_preflight, JoinPreflightResult) else JoinPreflightResult.model_validate(join_preflight_payload)
+                join_beta_result = execute_join_beta(
+                    path=path,
+                    workbook_context=workbook_context,
+                    preflight=effective_preflight,
+                    question=chat_text,
+                    requested_mode=mode,
+                    locale=locale,
+                )
+                join_beta_payload = (
+                    dict(join_beta_result.pipeline.get("join_beta"))
+                    if isinstance(join_beta_result.pipeline, dict) and isinstance(join_beta_result.pipeline.get("join_beta"), dict)
+                    else {}
+                )
+                join_beta_quality = _evaluate_join_beta_quality(join_beta_meta=join_beta_payload, locale=locale)
+                join_beta_fallback = bool(int(join_beta_quality.get("fallback_recommended") or 0))
+                join_beta_payload["quality"] = join_beta_quality
+                join_beta_payload["quality_status"] = str(join_beta_quality.get("status") or "")
+                join_beta_payload["fallback_applied"] = join_beta_fallback
+                join_beta_payload["fallback_reason"] = str(join_beta_quality.get("fallback_reason") or "")
+                join_beta_result.pipeline["join_beta"] = join_beta_payload
+
+                join_beta_observability = dict(sheet_routing_observability)
+                join_beta_observability["join_beta_executed"] = 1
+                join_beta_observability["join_beta_fallback"] = int(join_beta_fallback)
+                join_beta_observability["join_beta_quality_status"] = str(join_beta_quality.get("status") or "")
+                if join_beta_fallback:
+                    join_beta_observability["multi_sheet_failure_reason"] = "join_beta_quality_fallback"
+                    join_beta_observability["multi_sheet_top_failure_reasons"] = _record_multi_sheet_failure_reason(
+                        "join_beta_quality_fallback"
+                    )
+                else:
+                    join_beta_observability["multi_sheet_failure_reason"] = ""
+
+                session.sheet_index = int(join_beta_result.pipeline.get("source_sheet_index") or session.sheet_index or 1)
+                session.sheet_name = str(join_beta_result.pipeline.get("source_sheet_name") or session.sheet_name or "")
+
+                task_steps_payload = task_step_state.get("task_steps") if join_beta_fallback else []
+                current_step_payload = task_step_state.get("current_step_id") if join_beta_fallback else ""
+                meta_event = {
+                    "request_id": request_id,
+                    "file_id": file_id,
+                    "conversation_id": session.conversation_id,
+                    "meta": {
+                        "request_id": request_id,
+                        "sheet_index": sheet_index,
+                        "requested_sheet_name": _sheet_name_for_index(workbook_context, sheet_index),
+                        "sheet_override": sheet_override,
+                        "sheet_name": session.sheet_name,
+                        "resolved_sheet_index": int(join_beta_result.pipeline.get("source_sheet_index") or 0) or None,
+                        "resolved_sheet_name": session.sheet_name,
+                        "workbook_sheet_count": len(workbook_context.sheets),
+                        "rows_loaded": int(
+                            max(
+                                int((((join_beta_result.pipeline.get("join_beta") or {}) if isinstance(join_beta_result.pipeline, dict) else {}).get("left_rows") or 0)),
+                                int((((join_beta_result.pipeline.get("join_beta") or {}) if isinstance(join_beta_result.pipeline, dict) else {}).get("right_rows") or 0)),
+                            )
+                        ),
+                        "cols_loaded": int(len(join_beta_result.pipeline.get("result_columns") or [])),
+                        "conversation_id": session.conversation_id,
+                        "followup_turn_count": int(followup_context.get("turn_count") or 0) if followup_context else 0,
+                        "followup_context_reset": context_reset,
+                        "followup_action": normalized_followup_action or None,
+                        "followup_action_target_sheet_index": (
+                            int(followup_action_target.get("sheet_index") or 0)
+                            if isinstance(followup_action_target, dict)
+                            else None
+                        ),
+                        "analysis_anchor_reused": analysis_anchor_reused,
+                        "analysis_anchor": followup_analysis_anchor,
+                        "join_beta_executed": True,
+                        "join_beta_fallback": join_beta_fallback,
+                        "join_preflight": join_preflight_payload,
+                        "join_beta": join_beta_payload,
+                        "sheet_routing": _sheet_routing_payload(workbook_context, routing_decision, locale=locale),
+                        "sheet_sequence": sheet_sequence,
+                        "task_steps": task_steps_payload,
+                        "current_step_id": current_step_payload,
+                        "observability": {
+                            "sheet_routing": join_beta_observability,
+                            "task_steps": task_step_transition_events if join_beta_fallback else [],
+                        },
+                    },
+                }
+                yield _sse(meta_event)
+
+                join_beta_result.pipeline["sheet_routing"] = _sheet_routing_payload(workbook_context, routing_decision, locale=locale)
+                join_beta_result.pipeline["sheet_sequence"] = sheet_sequence
+                join_beta_result.pipeline["task_steps"] = task_steps_payload
+                join_beta_result.pipeline["current_step_id"] = current_step_payload
+                join_beta_result.pipeline["followup_action"] = normalized_followup_action or None
+                join_beta_result.pipeline["followup_action_target_sheet_index"] = (
+                    int(followup_action_target.get("sheet_index") or 0)
+                    if isinstance(followup_action_target, dict)
+                    else None
+                )
+                join_beta_result.pipeline["analysis_anchor_reused"] = analysis_anchor_reused
+                join_beta_result.pipeline["analysis_anchor"] = followup_analysis_anchor
+                join_beta_result.pipeline["join_preflight"] = join_preflight_payload
+                join_beta_result.pipeline.setdefault("observability", {})
+                join_beta_result.pipeline["observability"]["request_id"] = request_id
+                join_beta_result.pipeline["observability"]["request_total_ms"] = round((perf_counter() - request_started_at) * 1000, 3)
+                join_beta_result.pipeline["observability"]["task_step_started_count"] = (
+                    task_step_started_count if join_beta_fallback else 0
+                )
+                join_beta_result.pipeline["observability"]["task_step_completed_count"] = (
+                    task_step_completed_count if join_beta_fallback else 0
+                )
+                join_beta_result.pipeline["observability"]["task_step_events"] = (
+                    task_step_transition_events if join_beta_fallback else []
+                )
+                join_beta_result.pipeline["observability"]["join_preflight_status"] = str(join_preflight_payload.get("status") or "")
+                join_beta_result.pipeline["observability"]["join_preflight_check_count"] = len(
+                    join_preflight_payload.get("checks") or []
+                ) if isinstance(join_preflight_payload.get("checks"), list) else 0
+                join_beta_result.pipeline["observability"]["join_beta_fallback"] = int(join_beta_fallback)
+                join_beta_result.pipeline["observability"].update(join_beta_observability)
+
+                if join_beta_fallback and routing_decision.clarification is not None:
+                    fallback_reason = str(join_beta_quality.get("fallback_reason") or "")
+                    fallback_message = _join_beta_fallback_message(
+                        locale=locale,
+                        fallback_reason=fallback_reason,
+                        decomposition_hint=str(routing_decision.decomposition_hint or ""),
+                    )
+                    execution_disclosure = build_execution_disclosure(
+                        locale,
+                        rows_loaded=0,
+                        exact_used=False,
+                        fallback_reason=fallback_message,
+                    )
+                    join_beta_result.pipeline["status"] = "clarification"
+                    join_beta_result.pipeline["clarification_stage"] = "join_quality"
+                    join_beta_result.pipeline["clarification"] = routing_decision.clarification.model_dump()
+                    join_beta_result.pipeline["workbook_sheets"] = [sheet.model_dump() for sheet in workbook_context.sheets]
+
+                    log_event(
+                        logger,
+                        "spreadsheet_chat_clarification",
+                        request_id=request_id,
+                        file_id=file_id,
+                        conversation_id=session.conversation_id,
+                        sheet_index=sheet_index,
+                        resolved_sheet_index=None,
+                        routing_reason=str(routing_decision.reason or ""),
+                        boundary_status=str(routing_decision.boundary_status or ""),
+                        multi_sheet_detected=join_beta_observability["multi_sheet_detected"],
+                        clarification_sheet_count=join_beta_observability["clarification_sheet_count"],
+                        sheet_switch_count=join_beta_observability["sheet_switch_count"],
+                        multi_sheet_failure_reason=join_beta_observability["multi_sheet_failure_reason"],
+                        multi_sheet_top_failure_reasons=join_beta_observability["multi_sheet_top_failure_reasons"],
+                        followup_action=normalized_followup_action,
+                        followup_action_applied=join_beta_observability["followup_action_applied"],
+                        followup_action_target_sheet_index=join_beta_observability["followup_action_target_sheet_index"],
+                        task_step_started_count=task_step_started_count,
+                        task_step_completed_count=task_step_completed_count,
+                        join_beta_executed=1,
+                        join_beta_fallback=1,
+                    )
+
+                    yield _sse(
+                        {
+                            "request_id": request_id,
+                            "file_id": file_id,
+                            "conversation_id": session.conversation_id,
+                            "execution_disclosure": execution_disclosure.model_dump(),
+                            "data_scope": execution_disclosure.data_scope,
+                            "scope_text": execution_disclosure.scope_text,
+                            "scope_warning": execution_disclosure.scope_warning,
+                            "exact_used": execution_disclosure.exact_used,
+                            "pipeline": join_beta_result.pipeline,
+                        }
+                    )
+                    yield _sse(
+                        {
+                            "request_id": request_id,
+                            "file_id": file_id,
+                            "conversation_id": session.conversation_id,
+                            "mode": "text",
+                            "answer": fallback_message,
+                            "analysis_text": fallback_message,
+                            "execution_disclosure": execution_disclosure.model_dump(),
+                        }
+                    )
+                    conversation_store.append_turn(
+                        session,
+                        build_turn_summary(
+                            question=chat_text,
+                            requested_mode=mode,
+                            result_mode="text",
+                            pipeline=join_beta_result.pipeline,
+                            answer=fallback_message,
+                            analysis_text=fallback_message,
+                            chart_spec=None,
+                            execution_disclosure=execution_disclosure.model_dump(),
+                        ),
+                    )
+                    yield _sse({"request_id": request_id, "file_id": file_id, "conversation_id": session.conversation_id, "answer": "<|EOS|>"})
+                    return
+
+                pipeline_event = {
+                    "request_id": request_id,
+                    "file_id": file_id,
+                    "conversation_id": session.conversation_id,
+                    "execution_disclosure": join_beta_result.execution_disclosure.model_dump(),
+                    "data_scope": join_beta_result.execution_disclosure.data_scope,
+                    "scope_text": join_beta_result.execution_disclosure.scope_text,
+                    "scope_warning": join_beta_result.execution_disclosure.scope_warning,
+                    "exact_used": join_beta_result.execution_disclosure.exact_used,
+                    "pipeline": join_beta_result.pipeline,
+                }
+                yield _sse(pipeline_event)
+
+                answer_event = {
+                    "request_id": request_id,
+                    "file_id": file_id,
+                    "conversation_id": session.conversation_id,
+                    "mode": join_beta_result.mode,
+                    "answer": join_beta_result.answer,
+                    "analysis_text": join_beta_result.analysis_text or join_beta_result.answer,
+                    "execution_disclosure": join_beta_result.execution_disclosure.model_dump(),
+                }
+                answer_segments = (
+                    (((join_beta_result.pipeline.get("answer_generation") or {}) if isinstance(join_beta_result.pipeline, dict) else {}).get("segments"))
+                    if isinstance(join_beta_result.pipeline, dict)
+                    else None
+                )
+                if isinstance(answer_segments, dict):
+                    answer_event["answer_segments"] = answer_segments
+
+                conversation_store.append_turn(
+                    session,
+                    build_turn_summary(
+                        question=chat_text,
+                        requested_mode=mode,
+                        result_mode=join_beta_result.mode,
+                        pipeline=join_beta_result.pipeline,
+                        answer=join_beta_result.answer,
+                        analysis_text=join_beta_result.analysis_text,
+                        chart_spec=None,
+                        execution_disclosure=join_beta_result.execution_disclosure.model_dump(),
+                    ),
+                )
+
+                log_event(
+                    logger,
+                    "spreadsheet_chat_completed",
+                    request_id=request_id,
+                    file_id=file_id,
+                    conversation_id=session.conversation_id,
+                    planner_provider=str(
+                        ((join_beta_result.pipeline.get("planner") or {}) if isinstance(join_beta_result.pipeline, dict) else {}).get("provider")
+                        or ""
+                    ),
+                    answer_provider=str(
+                        ((join_beta_result.pipeline.get("answer_generation") or {}) if isinstance(join_beta_result.pipeline, dict) else {}).get("provider_used")
+                        or ""
+                    ),
+                    exact_used=join_beta_result.execution_disclosure.exact_used,
+                    total_ms=join_beta_result.pipeline.get("observability", {}).get("total_ms"),
+                    multi_sheet_detected=join_beta_observability["multi_sheet_detected"],
+                    clarification_sheet_count=join_beta_observability["clarification_sheet_count"],
+                    sheet_switch_count=join_beta_observability["sheet_switch_count"],
+                    multi_sheet_failure_reason=join_beta_observability["multi_sheet_failure_reason"],
+                    multi_sheet_top_failure_reasons=join_beta_observability["multi_sheet_top_failure_reasons"],
+                    followup_action=normalized_followup_action,
+                    followup_action_applied=join_beta_observability["followup_action_applied"],
+                    followup_action_target_sheet_index=join_beta_observability["followup_action_target_sheet_index"],
+                    task_step_started_count=0,
+                    task_step_completed_count=0,
+                    join_beta_executed=1,
+                )
+                yield _sse(answer_event)
+                yield _sse({"request_id": request_id, "file_id": file_id, "conversation_id": session.conversation_id, "answer": "<|EOS|>"})
+                return
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "spreadsheet_join_beta_execution_failed",
+                    request_id=request_id,
+                    file_id=file_id,
+                    conversation_id=session.conversation_id,
+                    error_type=type(exc).__name__,
+                )
+                logger.exception(
+                    json.dumps(
+                        {
+                            "event": "spreadsheet_join_beta_execution_failed",
+                            "request_id": request_id,
+                            "file_id": file_id,
+                            "conversation_id": session.conversation_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
         if routing_decision.status == "clarification" and routing_decision.clarification is not None:
             message = t(locale, "clarification", reason=routing_decision.clarification.reason)
+            if isinstance(join_preflight_payload, dict) and str(join_preflight_payload.get("summary") or "").strip():
+                message = f"{message}\n{str(join_preflight_payload['summary']).strip()}"
             execution_disclosure = build_execution_disclosure(locale, rows_loaded=0, exact_used=False, fallback_reason=message)
             meta_event = {
                 "request_id": request_id,
@@ -1310,6 +1784,7 @@ async def stream_spreadsheet_chat(
                     "sheet_sequence": sheet_sequence,
                     "task_steps": task_step_state.get("task_steps"),
                     "current_step_id": task_step_state.get("current_step_id"),
+                    "join_preflight": join_preflight_payload,
                     "observability": {
                         "sheet_routing": sheet_routing_observability,
                         "task_steps": task_step_transition_events,
@@ -1334,6 +1809,7 @@ async def stream_spreadsheet_chat(
                 "analysis_anchor_reused": analysis_anchor_reused,
                 "analysis_anchor": followup_analysis_anchor,
                 "clarification": routing_decision.clarification.model_dump(),
+                "join_preflight": join_preflight_payload,
                 "workbook_sheets": [sheet.model_dump() for sheet in workbook_context.sheets],
                 "observability": {
                     "request_id": request_id,
@@ -1341,6 +1817,12 @@ async def stream_spreadsheet_chat(
                     "task_step_started_count": task_step_started_count,
                     "task_step_completed_count": task_step_completed_count,
                     "task_step_events": task_step_transition_events,
+                    "join_preflight_status": str(join_preflight_payload.get("status") or "") if isinstance(join_preflight_payload, dict) else "",
+                    "join_preflight_check_count": (
+                        len(join_preflight_payload.get("checks") or [])
+                        if isinstance(join_preflight_payload, dict) and isinstance(join_preflight_payload.get("checks"), list)
+                        else 0
+                    ),
                     **sheet_routing_observability,
                 },
             }
@@ -1364,6 +1846,12 @@ async def stream_spreadsheet_chat(
                 followup_action_target_sheet_index=sheet_routing_observability["followup_action_target_sheet_index"],
                 task_step_started_count=task_step_started_count,
                 task_step_completed_count=task_step_completed_count,
+                join_preflight_status=str(join_preflight_payload.get("status") or "") if isinstance(join_preflight_payload, dict) else "",
+                join_preflight_check_count=(
+                    len(join_preflight_payload.get("checks") or [])
+                    if isinstance(join_preflight_payload, dict) and isinstance(join_preflight_payload.get("checks"), list)
+                    else 0
+                ),
             )
             yield _sse(
                 {

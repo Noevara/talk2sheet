@@ -99,3 +99,36 @@ class SpreadsheetBatchResponse(BaseModel):
     sheet_indexes: list[int] = Field(default_factory=list)
     batch_results: list[SpreadsheetBatchResult] = Field(default_factory=list)
     summary: SpreadsheetBatchSummary
+
+
+class JoinPreflightCheck(BaseModel):
+    code: str
+    status: Literal["pass", "warn", "fail"]
+    message: str
+    suggestion: str = ""
+
+
+class JoinPreflightSheetMetrics(BaseModel):
+    sheet_index: int
+    sheet_name: str
+    sampled_rows: int = 0
+    key_column: str = ""
+    key_dtype: str = ""
+    key_null_rate: float | None = None
+    key_duplicate_rate: float | None = None
+
+
+class JoinPreflightResult(BaseModel):
+    status: Literal["not_applicable", "pass", "warn", "fail"] = "not_applicable"
+    is_join_request: bool = False
+    join_key: str = ""
+    join_type: str = ""
+    sheet_indexes: list[int] = Field(default_factory=list)
+    estimated_match_rate: float | None = None
+    estimated_left_unmatched_rate: float | None = None
+    estimated_right_unmatched_rate: float | None = None
+    left_sheet: JoinPreflightSheetMetrics | None = None
+    right_sheet: JoinPreflightSheetMetrics | None = None
+    checks: list[JoinPreflightCheck] = Field(default_factory=list)
+    repair_suggestions: list[str] = Field(default_factory=list)
+    summary: str = ""

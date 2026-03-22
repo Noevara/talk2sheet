@@ -71,6 +71,40 @@ def _write_workbook(path: Path) -> None:
         ).to_excel(writer, sheet_name="Users", index=False)
 
 
+def _write_joinable_workbook(path: Path) -> None:
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame(
+            {
+                "Email": ["a@test.com", "b@test.com", "a@test.com", "d@test.com"],
+                "Amount": [100, 80, 30, 20],
+                "Order Date": ["2025-01-01", "2025-01-03", "2025-01-04", "2025-01-05"],
+            }
+        ).to_excel(writer, sheet_name="Orders", index=False)
+        pd.DataFrame(
+            {
+                "Email": ["a@test.com", "b@test.com", "c@test.com"],
+                "Region": ["SH", "BJ", "GZ"],
+            }
+        ).to_excel(writer, sheet_name="Users", index=False)
+
+
+def _write_join_explosive_workbook(path: Path) -> None:
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame(
+            {
+                "Email": ["same@test.com"] * 30,
+                "Amount": [10 + (idx % 3) for idx in range(30)],
+                "Order Date": [f"2025-01-{(idx % 9) + 1:02d}" for idx in range(30)],
+            }
+        ).to_excel(writer, sheet_name="Orders", index=False)
+        pd.DataFrame(
+            {
+                "Email": ["same@test.com"] * 25,
+                "Region": ["SH" if idx % 2 == 0 else "BJ" for idx in range(25)],
+            }
+        ).to_excel(writer, sheet_name="Users", index=False)
+
+
 async def _collect_events(**kwargs) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
     async for chunk in stream_spreadsheet_chat(**kwargs):
@@ -279,10 +313,122 @@ async def test_stream_chat_returns_multi_sheet_clarification_for_cross_sheet_que
     assert events[1]["pipeline"]["observability"]["sheet_switch_count"] == 0
     assert events[1]["pipeline"]["observability"]["multi_sheet_failure_reason"] == "cross_sheet_join_not_supported"
     assert events[1]["pipeline"]["observability"]["multi_sheet_top_failure_reasons"]["cross_sheet_join_not_supported"] >= 1
+    assert events[0]["meta"]["join_preflight"]["status"] == "fail"
+    assert len(events[0]["meta"]["join_preflight"]["repair_suggestions"]) >= 1
+    assert events[1]["pipeline"]["join_preflight"]["status"] == "fail"
+    assert events[1]["pipeline"]["observability"]["join_preflight_status"] == "fail"
+    assert events[1]["pipeline"]["observability"]["join_preflight_check_count"] >= 1
     assert len(events[1]["pipeline"]["task_steps"]) == 2
     assert events[1]["pipeline"]["task_steps"][0]["status"] == "current"
     assert events[1]["pipeline"]["current_step_id"] == "sheet-1"
     assert "multiple sheets" in str(events[2]["answer"]).lower()
+    assert "join preflight failed" in str(events[2]["answer"]).lower()
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_executes_join_beta_when_preflight_passes(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_join_beta.xlsx"
+    _write_joinable_workbook(workbook_path)
+    question = "Join Orders and Users by email and show top 2 regions by total amount."
+    events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-join-beta",
+        chat_text=question,
+        mode="auto",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+
+    assert events[0]["meta"]["join_beta_executed"] is True
+    assert events[0]["meta"]["join_preflight"]["status"] in {"pass", "warn"}
+    assert events[1]["pipeline"]["status"] == "ok"
+    assert events[1]["pipeline"]["planner"]["provider"] == "join_beta_executor"
+    assert events[1]["pipeline"]["join_beta"]["executed"] is True
+    assert events[1]["pipeline"]["join_beta"]["join_key"].lower() == "email"
+    assert events[1]["pipeline"]["result_row_count"] >= 1
+    assert events[1]["pipeline"]["observability"]["join_beta_executed"] == 1
+    assert events[2]["mode"] == "text"
+    assert "join beta" in str(events[2]["answer"]).lower()
+    assert planner.calls == []
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_keeps_clarification_when_join_beta_is_disabled(tmp_path, monkeypatch) -> None:
+    import app.config as config_module
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+    monkeypatch.setenv("TALK2SHEET_ENABLE_JOIN_BETA", "false")
+    config_module.get_settings.cache_clear()
+
+    workbook_path = tmp_path / "workbook_join_beta_disabled.xlsx"
+    _write_joinable_workbook(workbook_path)
+    question = "Join Orders and Users by email and show top 2 regions by total amount."
+    try:
+        events = await _collect_events(
+            path=workbook_path,
+            file_id="file-workbook-join-beta-disabled",
+            chat_text=question,
+            mode="auto",
+            sheet_index=1,
+            sheet_override=False,
+            locale="en",
+            conversation_id=None,
+        )
+    finally:
+        config_module.get_settings.cache_clear()
+
+    assert events[0]["meta"].get("join_beta_executed", False) is False
+    assert events[0]["meta"]["join_preflight"]["status"] in {"pass", "warn"}
+    assert events[1]["pipeline"]["status"] == "clarification"
+    assert events[1]["pipeline"]["clarification_stage"] == "sheet_routing"
+    assert events[1]["pipeline"]["sheet_routing"]["boundary_reason"] == "cross_sheet_join_not_supported"
+    assert events[1]["pipeline"]["observability"]["join_preflight_status"] in {"pass", "warn"}
+    assert planner.calls == []
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_auto_fallbacks_when_join_quality_is_too_risky(tmp_path, monkeypatch) -> None:
+    import app.services.spreadsheet.analysis as analysis_module
+
+    conversation_store.clear()
+    planner = _RecordingPlanner()
+    monkeypatch.setattr(analysis_module, "get_default_planner", lambda: planner)
+
+    workbook_path = tmp_path / "workbook_join_beta_fallback.xlsx"
+    _write_join_explosive_workbook(workbook_path)
+    question = "Join Orders and Users by email and show top 3 regions by total amount."
+    events = await _collect_events(
+        path=workbook_path,
+        file_id="file-workbook-join-beta-fallback",
+        chat_text=question,
+        mode="auto",
+        sheet_index=1,
+        sheet_override=False,
+        locale="en",
+        conversation_id=None,
+    )
+
+    assert events[0]["meta"]["join_beta_executed"] is True
+    assert events[0]["meta"]["join_beta_fallback"] is True
+    assert events[1]["pipeline"]["status"] == "clarification"
+    assert events[1]["pipeline"]["clarification_stage"] == "join_quality"
+    assert events[1]["pipeline"]["join_beta"]["fallback_applied"] is True
+    assert events[1]["pipeline"]["join_beta"]["quality_status"] == "fail"
+    assert events[1]["pipeline"]["observability"]["join_beta_fallback"] == 1
+    assert events[1]["pipeline"]["observability"]["multi_sheet_failure_reason"] == "join_beta_quality_fallback"
+    assert "falling back to sequential sheet analysis" in str(events[2]["answer"]).lower()
+    assert planner.calls == []
 
 
 @pytest.mark.asyncio

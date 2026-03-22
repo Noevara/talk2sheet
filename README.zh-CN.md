@@ -4,7 +4,7 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 它的核心目标是：用户围绕表格数据提出自然语言问题，系统在 workbook 内定位合适的目标 sheet，将问题翻译成可执行的分析计划，用 pandas 执行分析，再把答案和执行链路一起返回给前端。
 
-当前稳定版本：`v0.3.1`。
+当前稳定版本：`v0.3.3`。
 
 ## 当前范围
 
@@ -24,6 +24,7 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 - 文件上传、sheet 列表、表格预览
 - workbook 内单个目标 sheet 的自动路由
 - 同一 workbook 内顺序多 sheet 分析（先 A 后 B，分轮执行）
+- 受控 Join Beta 跨 sheet 能力（仅两表、单键、`inner`/`left`、聚合类问题）
 - 任务步骤卡片（待执行 / 进行中 / 已完成 / 失败）
 - “继续下一步”一键切到目标 sheet，并沿用当前分析口径
 - analysis anchor 口径锚点复用（降低追问时指标/维度/时间口径漂移）
@@ -48,7 +49,8 @@ Talk2Sheet 是一个开源的前后端一体化框架，用于实现“用自然
 
 当前暂不支持：
 
-- 单轮内跨 sheet join 或跨工作表联合分析
+- 单轮内任意跨 sheet join / union
+- 多键 join、多跳 join、三表及以上 join
 - 高级统计
 - 因果推断
 - 生产级对象存储与持久化会话后端
@@ -70,7 +72,7 @@ packages/contracts/  生成的 OpenAPI 契约产物
 - 日文：[README.ja.md](./README.ja.md)
 - 架构文档：[docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)
 - 版本说明：[CHANGELOG.md](./CHANGELOG.md)
-- 最新发布说明：[docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
+- 最新发布说明：[docs/releases/v0.3.3.md](./docs/releases/v0.3.3.md)
 
 ## 使用方式
 

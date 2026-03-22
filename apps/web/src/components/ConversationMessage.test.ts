@@ -405,11 +405,66 @@ describe("ConversationMessage", () => {
     });
 
     expect(wrapper.text()).toContain("Boundary");
-    expect(wrapper.text()).toContain("Cross-sheet join is out of scope");
+    expect(wrapper.text()).toContain("Cross-sheet request exceeds Join Beta scope");
     expect(wrapper.text()).toContain("Mentioned sheets");
     expect(wrapper.text()).toContain("Sales (#1), Users (#2)");
-    expect(wrapper.text()).toContain("Cross-sheet join or union is not supported yet.");
+    expect(wrapper.text()).toContain("Join Beta (two-sheet, single-key, inner/left, aggregate-only)");
     expect(wrapper.text()).toContain("analyze 'Sales' first, then 'Users'");
+  });
+
+  it("renders join quality panel with fallback signals", () => {
+    const message: ChatMessage = {
+      id: "assistant-join-quality",
+      role: "assistant",
+      text: "Join Beta fallback applied.",
+      clarification: null,
+      pipeline: {
+        join_preflight: {
+          status: "warn",
+          checks: [{ code: "join_key_duplicate_rate_high", status: "warn" }],
+        },
+        join_beta: {
+          executed: true,
+          fallback_applied: true,
+          fallback_reason: "Join quality does not meet the beta threshold.",
+          join_type: "left",
+          join_key: "email",
+          matched_rows: 20,
+          left_unmatched_rows: 5,
+          right_unmatched_rows: 10,
+          quality_status: "fail",
+          quality: {
+            match_rate: 0.4,
+            row_multiplier: 12.3,
+            signals: [
+              {
+                code: "join_row_explosion",
+                level: "fail",
+                message: "Join row expansion is too large (x12.30).",
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const wrapper = mount(ConversationMessage, {
+      props: {
+        message,
+        ui,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Join quality");
+    expect(wrapper.text()).toContain("Preflight");
+    expect(wrapper.text()).toContain("Execution quality");
+    expect(wrapper.text()).toContain("left");
+    expect(wrapper.text()).toContain("email");
+    expect(wrapper.text()).toContain("40.0%");
+    expect(wrapper.text()).toContain("x12.30");
+    expect(wrapper.text()).toContain("Fallback applied");
+    expect(wrapper.text()).toContain("Join quality does not meet the beta threshold.");
+    expect(wrapper.text()).toContain("Join row expansion is too large");
   });
 
   it("exports detail rows as csv for assistant result tables", async () => {

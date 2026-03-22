@@ -25,3 +25,8 @@ class AnalysisIntent(BaseModel):
     time_scope: AnalysisTimeScope | None = None
     answer_expectation: Literal["single_value", "summary_table", "detail_rows", "chart", "clarification", "unsupported"] | None = None
     clarification: Clarification | None = None
+    join_requested: bool = False
+    join_key: str | None = None
+    join_type: str | None = None
+    join_beta_eligible: bool | None = None
+    join_gate_reasons: list[str] = Field(default_factory=list)

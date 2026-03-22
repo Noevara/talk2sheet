@@ -1,0 +1,98 @@
+[
+  {
+    "id": "join_beta_inner_aggregate_en",
+    "chat_text": "Join Orders and Users by email and show top 5 regions by total amount.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": true,
+      "join_key": "email",
+      "join_type": "unspecified",
+      "is_aggregate_query": true,
+      "reasons": []
+    }
+  },
+  {
+    "id": "join_beta_left_aggregate_en",
+    "chat_text": "Left join Sales and Targets by region and rank regions by sum amount.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": true,
+      "join_key": "region",
+      "join_type": "left",
+      "is_aggregate_query": true,
+      "reasons": []
+    }
+  },
+  {
+    "id": "join_beta_multi_key_out_of_scope",
+    "chat_text": "Join Sales and Users using multiple keys email and region, then show sum amount.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": false,
+      "join_key": "multiple keys email",
+      "join_type": "unspecified",
+      "is_aggregate_query": true,
+      "reasons": ["join_multi_key_not_allowed"]
+    }
+  },
+  {
+    "id": "join_beta_right_join_out_of_scope",
+    "chat_text": "Right join Orders and Users by email and show count by region.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": false,
+      "join_key": "email",
+      "join_type": "unsupported",
+      "is_aggregate_query": true,
+      "reasons": ["join_type_not_allowed"]
+    }
+  },
+  {
+    "id": "join_beta_missing_key_out_of_scope",
+    "chat_text": "Join Orders with Users, rank top 3 regions and show sum amount.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": false,
+      "join_key": "",
+      "join_type": "unspecified",
+      "is_aggregate_query": true,
+      "reasons": ["join_key_missing"]
+    }
+  },
+  {
+    "id": "join_beta_non_aggregate_out_of_scope",
+    "chat_text": "Join Orders and Users by email and list raw detail rows.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": false,
+      "join_key": "email",
+      "join_type": "unspecified",
+      "is_aggregate_query": false,
+      "reasons": ["join_non_aggregate_query"]
+    }
+  },
+  {
+    "id": "join_beta_more_than_two_tables_out_of_scope",
+    "chat_text": "Join three sheets by email and show count by region.",
+    "expected": {
+      "is_join_request": true,
+      "eligible": false,
+      "join_key": "email",
+      "join_type": "unspecified",
+      "is_aggregate_query": true,
+      "reasons": ["join_more_than_two_tables"]
+    }
+  },
+  {
+    "id": "non_join_question",
+    "chat_text": "How many rows are in the current sheet?",
+    "expected": {
+      "is_join_request": false,
+      "eligible": false,
+      "join_key": "",
+      "join_type": "",
+      "is_aggregate_query": false,
+      "reasons": []
+    }
+  }
+]

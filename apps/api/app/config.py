@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Talk2Sheet API"
     app_version: str = "0.1.0"
+    app_env: str = "dev"
     api_prefix: str = "/api"
     data_dir: Path = Path(__file__).resolve().parents[1] / "data"
     upload_dir_name: str = "uploads"
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     max_preview_rows: int = 200
     max_analysis_rows: int = 50000
     batch_max_parallel: int = 1
+    enable_join_beta: bool | None = None
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
     planner_provider: str = "auto"
     context_interpreter_provider: str = "auto"
@@ -54,6 +56,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [item.strip() for item in self.allowed_origins.split(",") if item.strip()]
+
+    @property
+    def join_beta_enabled(self) -> bool:
+        if self.enable_join_beta is not None:
+            return bool(self.enable_join_beta)
+        return str(self.app_env or "").strip().lower() not in {"prod", "production"}
 
 
 @lru_cache(maxsize=1)

@@ -205,6 +205,35 @@ def test_heuristic_planner_builds_structured_intent_for_service_ranking() -> Non
     assert draft.analysis_intent.answer_expectation == "chart"
 
 
+def test_heuristic_planner_marks_join_beta_candidate_signals() -> None:
+    draft = HeuristicPlanner().plan(
+        _billing_df(),
+        chat_text="Join Sales and Users by email and show top 5 by total amount.",
+        requested_mode="auto",
+    )
+
+    assert draft.analysis_intent is not None
+    assert draft.analysis_intent.join_requested is True
+    assert draft.analysis_intent.join_key == "email"
+    assert draft.analysis_intent.join_type == "unspecified"
+    assert draft.analysis_intent.join_beta_eligible is True
+    assert draft.analysis_intent.join_gate_reasons == []
+
+
+def test_heuristic_planner_marks_join_out_of_scope_signals() -> None:
+    draft = HeuristicPlanner().plan(
+        _billing_df(),
+        chat_text="Join Sales and Users then list detail rows.",
+        requested_mode="auto",
+    )
+
+    assert draft.analysis_intent is not None
+    assert draft.analysis_intent.join_requested is True
+    assert draft.analysis_intent.join_beta_eligible is False
+    assert "join_key_missing" in draft.analysis_intent.join_gate_reasons
+    assert "join_non_aggregate_query" in draft.analysis_intent.join_gate_reasons
+
+
 def test_heuristic_planner_requests_intent_level_clarification_for_generic_name_dimension() -> None:
     draft = HeuristicPlanner().plan(
         _billing_df(),

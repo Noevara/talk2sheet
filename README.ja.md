@@ -4,7 +4,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 ユーザーの質問をもとに、ワークブック内で適切な対象シートを選び、実行可能な分析プランへ変換し、pandas で実行した結果と pipeline 情報をフロントエンドへ返します。
 
-現在の安定版リリースは `v0.3.1` です。
+現在の安定版リリースは `v0.3.3` です。
 
 ## 現在の対象範囲
 
@@ -24,6 +24,7 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 - ファイルアップロード、sheet 一覧、プレビュー
 - ワークブック内で 1 つの対象シートを選ぶ auto routing
 - 同一 workbook 内の順次 multi-sheet 分析（A を先に分析し、その後 B に進む）
+- 制御付き Join Beta（2 シート・単一キー・`inner`/`left`・集計系質問）
 - タスクステップカード（未実行 / 実行中 / 完了 / 失敗）
 - 「次のステップへ」ワンクリックで同スコープのまま次シートへ移動
 - analysis anchor の引き継ぎによる metric / dimension / time スコープの安定化
@@ -48,7 +49,8 @@ Talk2Sheet は、Excel / CSV に対して自然言語でデータ分析を行う
 
 現在まだ対応していないもの：
 
-- 1 ターン内での複数シート join や multi-sheet 複合分析
+- 1 ターン内での任意 join / union 実行
+- 複数キー join、多段 join、3 シート以上の join
 - 高度統計
 - 因果推論
 - 本番向け object storage と永続 session backend
@@ -70,7 +72,7 @@ packages/contracts/  生成済み OpenAPI 契約成果物
 - 日本語: このファイル
 - アーキテクチャ: [docs/architecture.ja.md](./docs/architecture.ja.md)
 - 変更履歴: [CHANGELOG.md](./CHANGELOG.md)
-- 最新リリースノート: [docs/releases/v0.3.1.md](./docs/releases/v0.3.1.md)
+- 最新リリースノート: [docs/releases/v0.3.3.md](./docs/releases/v0.3.3.md)
 
 ## 使い方
 

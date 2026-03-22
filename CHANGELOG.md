@@ -1,5 +1,56 @@
 # Changelog
 
+## v0.3.3 (2026-03-22)
+
+Controlled cross-sheet Join Beta release, focused on safe execution boundaries, preflight checks, quality transparency, and explicit fallback behavior.
+
+### Highlights
+
+- Added Join Beta intent gating and boundary governance for cross-sheet requests
+- Added Join Preflight checks before beta execution:
+  - join key existence
+  - type compatibility
+  - null/duplicate profile checks
+  - estimated match-rate checks
+  - repair suggestions
+- Added Join Beta execution path for controlled scope:
+  - two sheets only
+  - single-key equality join
+  - `inner` / `left` join types
+  - aggregate-oriented questions (`sum` / `count` / `avg` / `top` / `trend`)
+- Added join quality visualization and automatic fallback to sequential analysis when risk is high
+- Added user-facing boundary and examples updates (EN / ZH / JA) so users can quickly distinguish:
+  - supported Join Beta prompts
+  - out-of-scope join prompts
+- Added Join Beta feature-flag governance:
+  - `TALK2SHEET_ENABLE_JOIN_BETA`
+  - env-aware default (`dev` on, `prod` off unless explicitly enabled)
+- Added independent Join Beta regression corpus + evaluator + CI job with failure snapshot upload:
+  - `apps/api/tests/fixtures/join_beta_cases.v0.3.3.json`
+  - `python apps/api/scripts/eval_join_beta_cases.py`
+  - GitHub Actions job: `join-beta-regression`
+
+### Current Scope
+
+- Workbook-aware routing with one-sheet execution by default
+- Sequential multi-sheet analysis (`A -> B`)
+- Controlled Join Beta execution under strict constraints
+- Join preflight checks, quality signals, and fallback explanation
+- Request-level and step-level observability
+
+### Out of Scope
+
+- Arbitrary SQL-style joins and unions
+- Multi-key joins, multi-hop joins, joins across 3+ sheets
+- Advanced statistics and causal inference
+- Production-ready object storage and persistent session backends
+
+### Validation
+
+- `pytest -q apps/api/tests/test_spreadsheet_sheet_router.py apps/api/tests/test_spreadsheet_conversation.py apps/api/tests/test_spreadsheet_join_preflight.py apps/api/tests/test_spreadsheet_join_executor.py apps/api/tests/test_spreadsheet_capability_guard.py apps/api/tests/test_config_join_beta.py`
+- `python apps/api/scripts/eval_join_beta_cases.py --json`
+- `cd apps/web && npm run ci`
+
 ## v0.3.2 (2026-03-22)
 
 Batch workbook analysis release, focused on multi-sheet throughput, progress transparency, and batch usability.
